@@ -70,6 +70,19 @@
   .card-ftr{margin-top:6px;display:flex;justify-content:space-between;align-items:center}
   .card-ftr a{font-size:10px;color:var(--accent);text-decoration:none}
   .upd{font-size:10px;color:var(--muted)}
+  .loc-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:1 1 360px}
+  #locInput{flex:1 1 180px;min-width:0}
+  #radiusInput{width:60px}
+  .loc-form button{min-width:36px}
+  .opts{display:flex;gap:8px;align-items:center}
+  @media (max-width:600px){
+    .controls{padding:10px 12px}
+    .controls input,.controls select,.controls button{font-size:16px;min-height:40px}
+    .loc-form{flex-basis:100%}
+    #locInput{flex-basis:100%}
+    .loc-form button[type=submit]{flex:1}
+    .opts{flex-basis:100%;justify-content:space-between}
+  }
   footer{padding:12px 20px;border-top:1px solid var(--border);color:var(--muted);font-size:10px;display:flex;gap:12px;flex-wrap:wrap}
   footer a{color:var(--accent);text-decoration:none}
 </style>
@@ -82,14 +95,19 @@
 </header>
 
 <div class="controls">
-  <label>Zip:</label>
-  <input type="text" id="zipInput" value="84109" maxlength="10" style="width:70px">
-  <label>Radius&nbsp;(mi):</label>
-  <input type="number" id="radiusInput" value="30" min="5" max="500" style="width:55px">
-  <button onclick="loadStations()">&#128269; Find Stations</button>
-  <span style="margin-left:4px"><label>Median: </label>
-  <select id="medSel"><option value="1">Show</option><option value="0">Hide</option></select></span>
-  <button id="refreshBtn" onclick="loadAll()" disabled>&#8635; Refresh</button>
+  <form class="loc-form" id="locForm" onsubmit="onFind(); return false;">
+    <input type="text" id="locInput" placeholder="Zip, place, or lat, lon" enterkeyhint="search"
+           autocomplete="off" autocapitalize="words" spellcheck="false" aria-label="Location">
+    <label for="radiusInput">Radius&nbsp;(mi):</label>
+    <input type="number" id="radiusInput" value="30" min="5" max="500" inputmode="numeric" enterkeyhint="search">
+    <button type="submit" title="Find stations">&#128269; Find</button>
+    <button type="button" id="geoBtn" onclick="useMyLocation()" title="Use my location" aria-label="Use my location">&#128205;</button>
+  </form>
+  <div class="opts">
+    <span><label>Median: </label>
+    <select id="medSel"><option value="1">Show</option><option value="0">Hide</option></select></span>
+    <button id="refreshBtn" onclick="loadAll()" disabled>&#8635; Refresh</button>
+  </div>
 </div>
 
 <div class="legend-bar">
@@ -165,52 +183,246 @@ function geocodeZip(zip) {
     });
 }
 
-// ── Station discovery ──────────────────────────────────────────────────────
-function loadStations() {
-  var zip    = (document.getElementById('zipInput').value || '84109').trim();
-  var radius = parseFloat(document.getElementById('radiusInput').value) || 30;
-  var btn    = document.getElementById('refreshBtn');
-  btn.disabled = true;
-  document.getElementById('status').textContent = 'Geocoding ' + zip + '\u2026';
+// ── Location query resolution ──────────────────────────────────────────────
+// Free text -> {lat, lon, label, note}. Tried in order: zip, station ID,
+// decimal lat/lon, SNOTEL station name, then a Nominatim place search.
+var LATLON_RE = /^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/;
 
-  geocodeZip(zip)
-    .then(function(center) {
-      document.getElementById('status').textContent = 'Filtering stations\u2026';
-      STATIONS = SNTL_ALL
-        .map(function(s) {
-          return {
-            siteNum:   s.id,
-            name:      s.n,
-            elevation: s.e,
-            lat:       s.lat,
-            lon:       s.lon,
-            stateCode: s.st,
-            dist:      haversine(center.lat, center.lon, s.lat, s.lon)
-          };
-        })
-        .filter(function(s) { return s.dist <= radius; })
-        .sort(function(a, b) { return b.elevation - a.elevation; });
+function roundTo(x, dp) {
+  var f = Math.pow(10, dp);
+  return Math.round(x * f) / f;
+}
 
-      if (!STATIONS.length) {
-        document.getElementById('status').textContent =
-          'No SNOTEL stations found within ' + radius + ' miles of ' + zip;
-        btn.disabled = false;
-        return;
-      }
+function stationLoc(s) {
+  return { lat: s.lat, lon: s.lon, label: s.n + ' SNOTEL #' + s.id + ' (' + s.st + ')' };
+}
 
-      var loc = center.city ? center.city + ', ' + center.state : zip;
-      document.getElementById('sub').textContent =
-        'Snow Water Equivalent \u00b7 ' + radius + '-mile radius of ' + zip +
-        ' (' + loc + ') \u00b7 NRCS SNOTEL \u00b7 ' + STATIONS.length + ' stations';
+function findStationById(id) {
+  for (var i = 0; i < SNTL_ALL.length; i++) {
+    if (SNTL_ALL[i].id === id) return SNTL_ALL[i];
+  }
+  return null;
+}
 
-      renderGrid();
-      loadAll();
+// Exact name (case-insensitive) first, else a substring match only if unique
+function findStationByName(q) {
+  var ql = q.toLowerCase(), partial = [];
+  for (var i = 0; i < SNTL_ALL.length; i++) {
+    var n = SNTL_ALL[i].n.toLowerCase();
+    if (n === ql) return SNTL_ALL[i];
+    if (n.indexOf(ql) !== -1) partial.push(SNTL_ALL[i]);
+  }
+  return partial.length === 1 ? partial[0] : null;
+}
+
+// Nominatim policy: max 1 req/sec, no autocomplete -- only call on Find/Enter
+function nominatimSearch(q) {
+  return fetch('https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&limit=1&q=' +
+               encodeURIComponent(q))
+    .then(function(r) {
+      if (!r.ok) throw new Error('Place search failed (HTTP ' + r.status + ')');
+      return r.json();
     })
-    .catch(function(e) {
-      document.getElementById('status').textContent = 'Error: ' + e.message;
-      btn.disabled = false;
+    .then(function(j) {
+      if (!j.length) throw new Error('No place found for "' + q + '"');
+      return {
+        lat:   parseFloat(j[0].lat),
+        lon:   parseFloat(j[0].lon),
+        label: j[0].display_name.replace(/, United States$/, '')
+      };
     });
 }
+
+function resolveQuery(q) {
+  var m, s;
+  if (/^\d{5}$/.test(q)) {
+    return geocodeZip(q).then(function(c) {
+      return { lat: c.lat, lon: c.lon, label: q + ' (' + c.city + ', ' + c.state + ')' };
+    });
+  }
+  if ((m = q.match(/^#?(\d{1,4})$/))) {
+    s = findStationById(parseInt(m[1], 10));
+    return s ? Promise.resolve(stationLoc(s))
+             : Promise.reject(new Error('No SNOTEL station #' + m[1]));
+  }
+  if ((m = q.match(LATLON_RE))) {
+    var lat = parseFloat(m[1]), lon = parseFloat(m[2]), note = '';
+    if (lon > 0) { lon = -lon; note = 'longitude taken as west'; }
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return Promise.reject(new Error('Coordinates out of range: ' + q));
+    }
+    return Promise.resolve({ lat: lat, lon: lon, label: lat + ', ' + lon, note: note });
+  }
+  s = findStationByName(q);
+  if (s) return Promise.resolve(stationLoc(s));
+  return nominatimSearch(q);
+}
+
+// ── Use my location ────────────────────────────────────────────────────────
+function reverseLabel(lat, lon) {
+  return fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=' + lat + '&lon=' + lon)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(j) {
+      var a     = j.address || {};
+      var place = a.city || a.town || a.village || a.hamlet || a.municipality || a.county;
+      var iso   = a['ISO3166-2-lvl4'] || '';
+      var st    = iso.indexOf('US-') === 0 ? iso.slice(3) : a.state;
+      if (!place) throw new Error('No place name');
+      return 'Near ' + place + (st ? ', ' + st : '');
+    });
+}
+
+function useMyLocation() {
+  if (!navigator.geolocation) {
+    setStatus('Location is not available in this browser');
+    return;
+  }
+  var seq = ++searchSeq;
+  var r   = readRadius();
+  setStatus('Getting your location…');
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    if (seq !== searchSeq) return;
+    var lat = roundTo(pos.coords.latitude, 2), lon = roundTo(pos.coords.longitude, 2);
+    setStatus('Looking up place name…');
+    reverseLabel(lat, lon)
+      .catch(function() { return 'My location (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')'; })
+      .then(function(label) {
+        if (seq !== searchSeq) return;
+        showLocation({ lat: lat, lon: lon, r: r, label: label }, 'push');
+      });
+  }, function(err) {
+    if (seq !== searchSeq) return;
+    setStatus('Location unavailable: ' + err.message);
+  }, { timeout: 15000, maximumAge: 300000 });
+}
+
+// ── Location state: URL, history, localStorage ─────────────────────────────
+// URL coords are authoritative; label is display-only
+var LOC_KEY   = 'sweDashboard.loc';
+var curLoc    = null;
+var searchSeq = 0;
+
+function validLoc(lat, lon, r, label) {
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return {
+    lat:   lat,
+    lon:   lon,
+    r:     r > 0 ? Math.min(r, 500) : 30,
+    label: label || (lat + ', ' + lon)
+  };
+}
+
+function locFromUrl() {
+  var p = new URLSearchParams(location.search);
+  return validLoc(parseFloat(p.get('lat')), parseFloat(p.get('lon')),
+                  parseFloat(p.get('r')), p.get('label'));
+}
+
+function locUrl(loc) {
+  return location.pathname + '?lat=' + loc.lat + '&lon=' + loc.lon + '&r=' + loc.r +
+         '&label=' + encodeURIComponent(loc.label);
+}
+
+function loadSavedLoc() {
+  try {
+    var o = JSON.parse(localStorage.getItem(LOC_KEY));
+    return o ? validLoc(o.lat, o.lon, o.r, o.label) : null;
+  } catch (e) { return null; }
+}
+
+function saveLoc(loc) {
+  try {
+    localStorage.setItem(LOC_KEY, JSON.stringify({ lat: loc.lat, lon: loc.lon, r: loc.r, label: loc.label }));
+  } catch (e) {}
+}
+
+function readRadius() {
+  var r = parseFloat(document.getElementById('radiusInput').value);
+  return r > 0 ? Math.min(r, 500) : 30;
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+// Find button / Enter. Unchanged box text (or empty) re-uses the current
+// center, so a radius-only change skips the lookup.
+function onFind() {
+  var q = document.getElementById('locInput').value.trim();
+  var r = readRadius();
+  var seq = ++searchSeq;
+  if (curLoc && (!q || q === curLoc.label)) {
+    showLocation({ lat: curLoc.lat, lon: curLoc.lon, r: r, label: curLoc.label }, 'push');
+    return;
+  }
+  if (!q) return;
+  setStatus('Looking up ' + q + '…');
+  resolveQuery(q)
+    .then(function(loc) {
+      if (seq !== searchSeq) return;
+      loc.r = r;
+      showLocation(loc, 'push');
+    })
+    .catch(function(e) {
+      if (seq !== searchSeq) return;
+      setStatus('Error: ' + e.message);
+    });
+}
+
+// ── Station discovery ──────────────────────────────────────────────────────
+// historyMode: 'push', 'replace', or null (popstate -- URL already current)
+function showLocation(loc, historyMode) {
+  loc.lat = roundTo(loc.lat, 4);
+  loc.lon = roundTo(loc.lon, 4);
+  curLoc = loc;
+  document.getElementById('locInput').value    = loc.label;
+  document.getElementById('radiusInput').value = loc.r;
+  saveLoc(loc);
+  if (historyMode) {
+    var url = locUrl(loc);
+    if (url === location.pathname + location.search) historyMode = 'replace';
+    try { history[historyMode + 'State'](null, '', url); } catch (e) {}
+  }
+
+  STATIONS = SNTL_ALL
+    .map(function(s) {
+      return {
+        siteNum:   s.id,
+        name:      s.n,
+        elevation: s.e,
+        lat:       s.lat,
+        lon:       s.lon,
+        stateCode: s.st,
+        dist:      haversine(loc.lat, loc.lon, s.lat, s.lon)
+      };
+    })
+    .filter(function(s) { return s.dist <= loc.r; })
+    .sort(function(a, b) { return b.elevation - a.elevation; });
+
+  document.getElementById('sub').textContent =
+    'Snow Water Equivalent · ' + loc.r + '-mile radius of ' + loc.label +
+    (loc.note ? ' (' + loc.note + ')' : '') +
+    ' · NRCS SNOTEL · ' + STATIONS.length + ' stations';
+
+  renderGrid();
+  if (!STATIONS.length) {
+    loadGen++;
+    document.getElementById('refreshBtn').disabled = true;
+    setStatus('No SNOTEL stations found within ' + loc.r + ' miles of ' + loc.label);
+    return;
+  }
+  loadAll();
+}
+
+window.addEventListener('popstate', function() {
+  var loc = locFromUrl();
+  if (!loc) return;
+  searchSeq++;
+  showLocation(loc, null);
+});
 
 // ── Elevation band grouping ────────────────────────────────────────────────
 function groupByElevation(stations, bandFt) {
@@ -538,13 +750,17 @@ function loadStation(s) {
 }
 
 // ── Main load ──────────────────────────────────────────────────────────────
+var loadGen = 0;
+
 function loadAll() {
   showMedian = document.getElementById('medSel').value === '1';
+  var gen = ++loadGen;
   var btn = document.getElementById('refreshBtn');
   btn.disabled = true;
   document.getElementById('status').textContent = 'Fetching ' + STATIONS.length + ' stations from NRCS\u2026';
   var t0 = Date.now();
   Promise.all(STATIONS.map(loadStation)).then(function() {
+    if (gen !== loadGen) return;  // superseded by a newer search
     var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     document.getElementById('status').textContent =
       'Loaded in ' + elapsed + 's \u00b7 NRCS SNOTEL (wcc.sc.egov.usda.gov)';
@@ -556,8 +772,17 @@ function loadAll() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.getElementById('curWyLegend').textContent = 'WY' + CUR_WY;
+// Location: URL params, else last saved, else default zip
 try {
-  loadStations();
+  var initLoc = locFromUrl() || loadSavedLoc();
+  if (initLoc) {
+    showLocation(initLoc, 'replace');
+  } else {
+    setStatus('Geocoding 84109…');
+    resolveQuery('84109')
+      .then(function(loc) { loc.r = 30; showLocation(loc, 'replace'); })
+      .catch(function(e) { setStatus('Error: ' + e.message); });
+  }
 } catch(e) {
   document.getElementById('status').textContent = 'Init error: ' + e.message;
   console.error('Init failed:', e);
