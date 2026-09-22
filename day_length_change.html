@@ -37,6 +37,12 @@
   header{padding:20px 20px 14px;border-bottom:1px solid var(--border)}
   header h1{font-size:22px;font-weight:600;letter-spacing:-.5px}
   .sub{color:var(--muted);font-size:11px;margin-top:4px}
+  .sub a{color:var(--accent);text-decoration:none}
+  .sub a:hover{text-decoration:underline}
+  .math{font-family:ui-monospace,Menlo,monospace;display:flex;flex-wrap:wrap;column-gap:18px;row-gap:2px}
+  .math span{white-space:nowrap}
+  .math .note{font-family:system-ui,monospace;opacity:.8}
+  @media (max-width:400px){.math span{white-space:normal}}
   .controls{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   select,button{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:system-ui,monospace;font-size:11px;padding:4px 8px;border-radius:4px;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
@@ -90,7 +96,8 @@
 
 <header>
   <h1>Day Length Rate of Change</h1>
-  <div class="sub">How fast the days are getting longer or shorter &middot; minutes per day &middot; NOAA solar formula</div>
+  <div class="sub">How fast the days are getting longer or shorter &middot; minutes per day &middot; <a href="https://gml.noaa.gov/grad/solcalc/calcdetails.html" target="_blank" rel="noopener">NOAA solar formula</a></div>
+  <div class="sub math"><span>cos H = (sin(&minus;0.833&deg;) &minus; sin &phi; sin &delta;) / (cos &phi; cos &delta;)</span> <span>day length = 2H / 15&deg; h</span> <span>change = today &minus; yesterday</span> <span class="note">&phi; latitude, &delta; sun&rsquo;s declination</span></div>
 </header>
 
 <div class="controls">
