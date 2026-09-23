@@ -66,7 +66,9 @@
   .sel-date{font-size:16px;font-weight:600}
   .hint{font-size:10px;color:var(--muted)}
   .nav{display:flex;gap:4px}
-  .chart-wrap{position:relative;height:380px;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none}
+  .chart-wrap{touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none}
+  .chart-box{position:relative;height:380px}
+  .chart-box.dl{height:240px;margin-top:6px}
   .chart-wrap.dragging{cursor:grabbing}
   .chart-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -85,7 +87,8 @@
     .loc-form{flex-basis:100%}
     #locInput{flex-basis:100%}
     #addBtn{flex:1}
-    .chart-wrap{height:280px}
+    .chart-box{height:280px}
+    .chart-box.dl{height:200px}
     table{font-size:11px}
     th,td{padding:5px 4px}
     th{letter-spacing:.02em;font-size:9px}
@@ -96,7 +99,7 @@
 
 <header>
   <h1>Day Length Rate of Change</h1>
-  <div class="sub">How fast the days are getting longer or shorter &middot; minutes per day &middot; <a href="https://gml.noaa.gov/grad/solcalc/calcdetails.html" target="_blank" rel="noopener">NOAA solar formula</a></div>
+  <div class="sub">How fast the days are getting longer or shorter &middot; minutes per day, with day length below &middot; <a href="https://gml.noaa.gov/grad/solcalc/calcdetails.html" target="_blank" rel="noopener">NOAA solar formula</a></div>
   <div class="sub math"><span>cos H = (sin(&minus;0.833&deg;) &minus; sin &phi; sin &delta;) / (cos &phi; cos &delta;)</span> <span>day length = 2H / 15&deg; h</span> <span>change = today &minus; yesterday</span> <span class="note">&phi; latitude, &delta; sun&rsquo;s declination</span></div>
 </header>
 
@@ -116,7 +119,7 @@
   <div class="panel-hdr">
     <div>
       <div class="sel-date" id="selDate"></div>
-      <div class="hint">Drag the chart or use &larr; &rarr; (Shift: 1 week)</div>
+      <div class="hint">Drag either chart or use &larr; &rarr; (Shift: 1 week)</div>
     </div>
     <div class="nav">
       <button type="button" onclick="moveCenter(-1)" title="Previous day" aria-label="Previous day">&#9664;</button>
@@ -124,8 +127,9 @@
       <button type="button" onclick="moveCenter(1)" title="Next day" aria-label="Next day">&#9654;</button>
     </div>
   </div>
-  <div class="chart-wrap" id="chartWrap" tabindex="0" aria-label="Rate of change of day length chart; drag or use arrow keys to change the date">
-    <canvas id="chart"></canvas>
+  <div class="chart-wrap" id="chartWrap" tabindex="0" aria-label="Rate of change and day length charts; drag or use arrow keys to change the date">
+    <div class="chart-box"><canvas id="chart" role="img" aria-label="Rate of change of day length, minutes per day"></canvas></div>
+    <div class="chart-box dl"><canvas id="dlChart" role="img" aria-label="Day length, hours"></canvas></div>
   </div>
 </div>
 
@@ -225,7 +229,9 @@ var LOCS = [];            // [{lat, lon, label, slot}]
 var TODAY = todayDn();
 var center = TODAY;
 var yMax = 3;
+var dlMin = 0, dlMax = 24, dlTick = 4;   // day-length y range and tick step, hours
 var chart = null;
+var dlChart = null;
 
 // ── Location lookups ───────────────────────────────────────────────────────
 function geocodeZip(zip) {
@@ -464,7 +470,7 @@ function applyLocs(historyMode) {
     if (url === location.pathname + location.search) historyMode = 'replace';
     try { history[historyMode + 'State']({ slots: slotList() }, '', url); } catch (e) {}
   }
-  yMax = computeYMax();
+  computeRanges();
   renderChips();
   renderChart();
 }
@@ -502,34 +508,42 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// Symmetric y range: largest |rate| over a full year across current locations,
-// rounded up to a whole minute. Only recomputed when locations change.
-function computeYMax() {
-  var max = 0, y0 = dn(dnDate(TODAY).getUTCFullYear(), 0, 1);
+// Y ranges over a full year across current locations. Rate: symmetric, largest
+// |rate| rounded up to a whole minute. Day length: min/max rounded out to a
+// multiple of the tick step (whole hours). Only recomputed when locations change.
+function computeRanges() {
+  var max = 0, lo = Infinity, hi = -Infinity, y0 = dn(dnDate(TODAY).getUTCFullYear(), 0, 1);
   LOCS.forEach(function(l) {
     var prev = dayLength(y0 - 1, l.lat, l.lon);
     for (var n = y0; n < y0 + 366; n++) {
       var cur = dayLength(n, l.lat, l.lon);
       max = Math.max(max, Math.abs(cur - prev));
+      lo = Math.min(lo, cur); hi = Math.max(hi, cur);
       prev = cur;
     }
   });
-  return Math.max(1, Math.ceil(max));
+  yMax = Math.max(1, Math.ceil(max));
+  if (!LOCS.length) { dlMin = 0; dlMax = 24; dlTick = 4; return; }
+  lo /= 60; hi /= 60;
+  var span = Math.ceil(hi) - Math.floor(lo);
+  dlTick = span > 12 ? 4 : span > 6 ? 2 : 1;
+  dlMin = Math.floor(lo / dlTick) * dlTick;
+  dlMax = Math.max(dlMin + dlTick, Math.ceil(hi / dlTick) * dlTick);
 }
 
 function viewRange() {
   return { min: addMonths(center, -7), max: addMonths(center, 7) };
 }
 
-function seriesFor(l, r) {
-  var pts = [], prev = dayLength(r.min - 1, l.lat, l.lon);
-  for (var n = r.min; n <= r.max; n++) {
-    var cur = dayLength(n, l.lat, l.lon);
-    pts.push({ x: n, y: cur - prev });
-    prev = cur;
-  }
+// fn(n, l) -> y for each day in range
+function seriesFor(l, r, fn) {
+  var pts = [];
+  for (var n = r.min; n <= r.max; n++) pts.push({ x: n, y: fn(n, l) });
   return pts;
 }
+
+function rateAt(n, l) { return rate(n, l.lat, l.lon); }
+function hoursAt(n, l) { return dayLength(n, l.lat, l.lon) / 60; }
 
 function monthTicks(min, max) {
   var d = dnDate(min), ticks = [];
@@ -546,10 +560,11 @@ function fmtRate(v) {
   return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2) + ' min/day';
 }
 
-// Center, +/-3 and +/-6 month, today and zero lines
+// Center, +/-3 and +/-6 month, today and horizontal reference lines.
+// Options: refY (reference value), refAlpha, labels (draw vertical-line labels)
 var markerPlugin = {
   id: 'markers',
-  beforeDatasetsDraw: function(c) {
+  beforeDatasetsDraw: function(c, args, opts) {
     var a = c.chartArea, x = c.scales.x, y = c.scales.y, ctx = c.ctx;
     function vline(n, color, width, dash) {
       if (n < x.min || n > x.max) return null;
@@ -560,21 +575,22 @@ var markerPlugin = {
       return px;
     }
     ctx.save();
-    var zy = Math.round(y.getPixelForValue(0)) + 0.5;
-    ctx.beginPath(); ctx.strokeStyle = cssVar('--muted'); ctx.lineWidth = 1; ctx.setLineDash([]);
-    ctx.moveTo(a.left, zy); ctx.lineTo(a.right, zy); ctx.stroke();
-
     var muted = cssVar('--muted');
+    if (opts.refY >= y.min && opts.refY <= y.max) {
+      var ry = Math.round(y.getPixelForValue(opts.refY)) + 0.5;
+      ctx.globalAlpha = opts.refAlpha;
+      ctx.beginPath(); ctx.strokeStyle = muted; ctx.lineWidth = 1; ctx.setLineDash([]);
+      ctx.moveTo(a.left, ry); ctx.lineTo(a.right, ry); ctx.stroke();
+    }
     ctx.globalAlpha = 0.45;
     [-6, 6].forEach(function(k) { vline(addMonths(center, k), muted, 1, [2, 4]); });
     ctx.globalAlpha = 0.7;
     [-3, 3].forEach(function(k) { vline(addMonths(center, k), muted, 1, [5, 4]); });
-
     ctx.font = '10px system-ui, monospace';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
     ctx.fillStyle = muted;
     function vlabel(text, px) {
+      if (!opts.labels || px == null) return;
       ctx.textBaseline = 'top'; ctx.fillText(text, px, a.top + 2);
       ctx.textBaseline = 'bottom'; ctx.fillText(text, px, a.bottom - 2);
     }
@@ -587,7 +603,6 @@ var markerPlugin = {
       if (todayPx != null && Math.abs(px - todayPx) < 36) return;
       vlabel((k > 0 ? '+' : '−') + Math.abs(k) + ' mo', px);
     });
-
     if (showToday) {
       ctx.globalAlpha = 0.8;
       var tp = vline(TODAY, cssVar('--warn'), 1, [1, 3]);
@@ -600,31 +615,46 @@ var markerPlugin = {
   }
 };
 
-function renderChart() {
-  var r = viewRange();
-  var datasets = LOCS.map(function(l) {
+// Mirror hover between the two charts: hovering one shows the same day's
+// tooltip on the other
+var hoverSyncPlugin = {
+  id: 'hoverSync',
+  afterEvent: function(c, args) {
+    var e = args.event;
+    var other = c === chart ? dlChart : chart;
+    if (!other || !e.native) return;
+    var els = e.type === 'mouseout' || drag ? [] :
+      c.getElementsAtEventForMode(e, 'index', { intersect: false }, false)
+       .map(function(el) { return { datasetIndex: el.datasetIndex, index: el.index }; });
+    other.setActiveElements(els);
+    other.tooltip.setActiveElements(els, { x: e.x, y: e.y });
+    other.update('none');
+  }
+};
+
+// Both charts share x range and a fixed y-axis width so their plot areas line up
+var Y_AXIS_W = 58;
+
+function datasetsFor(r, fn) {
+  return LOCS.map(function(l) {
     return {
-      label: l.label, data: seriesFor(l, r),
+      label: l.label, data: seriesFor(l, r, fn),
       borderColor: SLOT_COLORS[l.slot], backgroundColor: SLOT_COLORS[l.slot],
       borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: 0
     };
   });
+}
 
-  if (chart) {
-    chart.data.datasets = datasets;
-    chart.options.scales.x.min = r.min;
-    chart.options.scales.x.max = r.max;
-    chart.options.scales.y.min = -yMax;
-    chart.options.scales.y.max = yMax;
-    chart.update('none');
-    renderReadout();
-    return;
-  }
-
+// cfg: canvas, datasets, range, xLabels, markers, title(items), label(item), y (scale options)
+function makeChart(cfg) {
   var muted = cssVar('--muted'), border = cssVar('--border');
-  chart = new Chart(document.getElementById('chart').getContext('2d'), {
-    type: 'line', data: { datasets: datasets },
-    plugins: [markerPlugin],
+  var y = cfg.y;
+  y.afterFit = function(s) { s.width = Y_AXIS_W; };
+  y.grid = { color: border }; y.border = { color: border };
+  y.ticks.color = muted; y.title.color = muted;
+  return new Chart(document.getElementById(cfg.canvas).getContext('2d'), {
+    type: 'line', data: { datasets: cfg.datasets },
+    plugins: [markerPlugin, hoverSyncPlugin],
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       parsing: false, normalized: true,
@@ -632,34 +662,71 @@ function renderChart() {
       events: ['mousemove', 'mouseout', 'touchstart', 'touchmove'],
       plugins: {
         legend: { display: false },
+        markers: cfg.markers,
         tooltip: {
           filter: function() { return !drag; },
           backgroundColor: cssVar('--surface'), borderColor: border, borderWidth: 1,
           titleColor: muted, bodyColor: cssVar('--text'),
-          callbacks: {
-            title: function(items) { return fmtDate(items[0].parsed.x); },
-            label: function(item) { return ' ' + item.dataset.label + ': ' + fmtRate(item.parsed.y); }
-          }
+          callbacks: { title: cfg.title, label: cfg.label }
         }
       },
       scales: {
-        x: { type: 'linear', min: r.min, max: r.max,
+        x: { type: 'linear', min: cfg.range.min, max: cfg.range.max,
           afterBuildTicks: function(s) { s.ticks = monthTicks(s.min, s.max); },
-          ticks: { color: muted, maxRotation: 0, autoSkip: true, autoSkipPadding: 8,
+          ticks: { display: cfg.xLabels, color: muted, maxRotation: 0, autoSkip: true, autoSkipPadding: 8,
             callback: function(v) {
               var d = dnDate(v);
               return d.getUTCMonth() === 0
-                ? fmtDate(v, { month: 'short' }) + ' \u2019' + String(d.getUTCFullYear()).slice(2)
+                ? fmtDate(v, { month: 'short' }) + ' ’' + String(d.getUTCFullYear()).slice(2)
                 : fmtDate(v, { month: 'short' });
             } },
           grid: { color: border }, border: { color: border } },
-        y: { min: -yMax, max: yMax,
-          ticks: { color: muted, stepSize: yMax > 6 ? undefined : (yMax > 3 ? 1 : 0.5),
-            callback: function(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); } },
-          grid: { color: border }, border: { color: border },
-          title: { display: true, text: 'Change in day length (min/day)', color: muted } }
+        y: y
       }
     }
+  });
+}
+
+function rateStep() { return yMax > 6 ? undefined : (yMax > 3 ? 1 : 0.5); }
+
+function renderChart() {
+  var r = viewRange();
+  var rateSets = datasetsFor(r, rateAt), dlSets = datasetsFor(r, hoursAt);
+  if (chart) {
+    chart.data.datasets = rateSets;
+    chart.options.scales.y.min = -yMax;
+    chart.options.scales.y.max = yMax;
+    chart.options.scales.y.ticks.stepSize = rateStep();
+    dlChart.data.datasets = dlSets;
+    dlChart.options.scales.y.min = dlMin;
+    dlChart.options.scales.y.max = dlMax;
+    dlChart.options.scales.y.ticks.stepSize = dlTick;
+    [chart, dlChart].forEach(function(c) {
+      c.options.scales.x.min = r.min;
+      c.options.scales.x.max = r.max;
+      c.update('none');
+    });
+    renderReadout();
+    return;
+  }
+  chart = makeChart({
+    canvas: 'chart', datasets: rateSets, range: r, xLabels: false,
+    markers: { refY: 0, refAlpha: 1, labels: true },
+    title: function(items) { return fmtDate(items[0].parsed.x); },
+    label: function(item) { return ' ' + item.dataset.label + ': ' + fmtRate(item.parsed.y); },
+    y: { min: -yMax, max: yMax,
+      ticks: { stepSize: rateStep(),
+        callback: function(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); } },
+      title: { display: true, text: 'Change in day length (min/day)' } }
+  });
+  dlChart = makeChart({
+    canvas: 'dlChart', datasets: dlSets, range: r, xLabels: true,
+    markers: { refY: 12, refAlpha: 0.5, labels: false },
+    title: function() { return ''; },
+    label: function(item) { return ' ' + item.dataset.label + ': ' + fmtHM(item.parsed.y * 60); },
+    y: { min: dlMin, max: dlMax,
+      ticks: { stepSize: dlTick, callback: function(v) { return v + ' h'; } },
+      title: { display: true, text: 'Day length' } }
   });
   renderReadout();
 }
@@ -723,8 +790,11 @@ var drag = null;
     drag = { id: e.pointerId, x0: e.clientX, c0: center, dpp: (r.max - r.min) / (a.right - a.left) };
     try { wrap.setPointerCapture(e.pointerId); } catch (err) {}
     wrap.classList.add('dragging');
-    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
-    chart.update('none');
+    [chart, dlChart].forEach(function(c) {
+      c.setActiveElements([]);
+      c.tooltip.setActiveElements([], { x: 0, y: 0 });
+      c.update('none');
+    });
   });
   wrap.addEventListener('pointermove', function(e) {
     if (!drag || e.pointerId !== drag.id) return;
