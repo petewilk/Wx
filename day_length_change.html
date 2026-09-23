@@ -68,7 +68,7 @@
   .nav{display:flex;gap:4px}
   .chart-wrap{touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none}
   .chart-box{position:relative;height:380px}
-  .chart-box.dl{height:240px;margin-top:6px}
+  .chart-box.dl{height:240px;margin-top:20px}
   .chart-wrap.dragging{cursor:grabbing}
   .chart-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -645,7 +645,7 @@ function datasetsFor(r, fn) {
   });
 }
 
-// cfg: canvas, datasets, range, xLabels, markers, title(items), label(item), y (scale options)
+// cfg: canvas, datasets, range, xPos (month labels 'top'/'bottom'), markers, title(items), label(item), y (scale options)
 function makeChart(cfg) {
   var muted = cssVar('--muted'), border = cssVar('--border');
   var y = cfg.y;
@@ -671,9 +671,9 @@ function makeChart(cfg) {
         }
       },
       scales: {
-        x: { type: 'linear', min: cfg.range.min, max: cfg.range.max,
+        x: { type: 'linear', position: cfg.xPos, min: cfg.range.min, max: cfg.range.max,
           afterBuildTicks: function(s) { s.ticks = monthTicks(s.min, s.max); },
-          ticks: { display: cfg.xLabels, color: muted, maxRotation: 0, autoSkip: true, autoSkipPadding: 8,
+          ticks: { color: muted, maxRotation: 0, autoSkip: true, autoSkipPadding: 8,
             callback: function(v) {
               var d = dnDate(v);
               return d.getUTCMonth() === 0
@@ -710,7 +710,7 @@ function renderChart() {
     return;
   }
   chart = makeChart({
-    canvas: 'chart', datasets: rateSets, range: r, xLabels: false,
+    canvas: 'chart', datasets: rateSets, range: r, xPos: 'top',
     markers: { refY: 0, refAlpha: 1, labels: true },
     title: function(items) { return fmtDate(items[0].parsed.x); },
     label: function(item) { return ' ' + item.dataset.label + ': ' + fmtRate(item.parsed.y); },
@@ -720,7 +720,7 @@ function renderChart() {
       title: { display: true, text: 'Change in day length (min/day)' } }
   });
   dlChart = makeChart({
-    canvas: 'dlChart', datasets: dlSets, range: r, xLabels: true,
+    canvas: 'dlChart', datasets: dlSets, range: r, xPos: 'bottom',
     markers: { refY: 12, refAlpha: 0.5, labels: false },
     title: function() { return ''; },
     label: function(item) { return ' ' + item.dataset.label + ': ' + fmtHM(item.parsed.y * 60); },
