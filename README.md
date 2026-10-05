@@ -10,9 +10,12 @@ Snow Water Equivalent (SWE) dashboard for the Wasatch Mountains, pulling live da
 ### [day_length_change.html](day_length_change.html)
 Plots the rate of change of day length (minutes of daylight gained/lost per day) across the year, with day length and local sunrise/sunset times on linked charts below (sunrise/sunset can follow each place's actual clock, standard time, or DST all year, using a bundled offline [tz-lookup](https://github.com/darkskyapp/tz-lookup) time zone lookup), for up to four locations, using [NOAA's solar calculator formulas](https://gml.noaa.gov/grad/solcalc/calcdetails.html).
 
+### [meteogram_dashboard.html](meteogram_dashboard.html)
+Dashboard of meteograms for places you choose, each a replica of meteoblue's All-in-One chart: weather icons, temperature and feels-like, humidity and dew point, rain/snow precipitation with chance, freezing level, low/mid/high cloud cover with sunshine, and wind with direction arrows. Data come from the [Open-Meteo](https://open-meteo.com/) forecast API (3 to 16 days, imperial or metric, hourly refresh), with a 10th-90th percentile band from the Open-Meteo ensemble API at 14 and 16 days. A crosshair is synced across all places by the same instant, and charts scroll together on narrow screens.
+
 ## Location lookup
 
-Both pages resolve place names and coordinates via the free [Nominatim](https://nominatim.openstreetmap.org/) and [Zippopotam.us](https://api.zippopotam.us/) APIs.
+All pages resolve place names and coordinates via the free [Nominatim](https://nominatim.openstreetmap.org/) and [Zippopotam.us](https://api.zippopotam.us/) APIs.
 
 ## Live
 

@@ -1,0 +1,1716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meteogram Dashboard</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#21262d;
+    --accent:#58a6ff; --green:#3fb950; --muted:#8b949e;
+    --text:#e6edf3; --danger:#f85149; --warn:#d29922;
+  }
+  html.light {
+    --bg:#f6f8fa; --surface:#ffffff; --border:#d0d7de;
+    --accent:#0969da; --green:#1a7f37; --muted:#636c76;
+    --text:#1f2328; --danger:#cf222e; --warn:#9a6700;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  [hidden]{display:none!important}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,monospace;font-size:13px;min-height:100vh;overflow-x:hidden}
+  header{padding:20px 20px 14px;border-bottom:1px solid var(--border)}
+  header h1{font-size:22px;font-weight:600;letter-spacing:-.5px}
+  .sub{color:var(--muted);font-size:11px;margin-top:4px}
+  .sub a{color:var(--accent);text-decoration:none}
+  .sub a:hover{text-decoration:underline}
+  .controls{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap}
+  select,button{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:system-ui,monospace;font-size:11px;padding:4px 8px;border-radius:4px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  input[type=text]{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:system-ui,monospace;font-size:11px;padding:4px 8px;border-radius:4px;outline:none}
+  .loc-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:1 1 360px}
+  #locInput{flex:1 1 180px;min-width:0}
+  .loc-form button{min-width:36px}
+  #addBtn,#refreshBtn{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;padding:5px 12px}
+  html.light #addBtn,html.light #refreshBtn{color:#fff}
+  .grp{display:flex;align-items:center;gap:6px}
+  .grp label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .seg{display:inline-flex}
+  .seg button{border-radius:0;margin-left:-1px;position:relative}
+  .seg button:first-child{border-radius:4px 0 0 4px;margin-left:0}
+  .seg button:last-child{border-radius:0 4px 4px 0}
+  .seg button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700;z-index:1}
+  html.light .seg button[aria-pressed=true]{color:#fff}
+  .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:2}
+  .upd{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .status{padding:4px 20px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);min-height:20px}
+  .status.err{color:var(--danger)}
+  .cards{display:flex;flex-direction:column;gap:1px;background:var(--border)}
+  .card{background:var(--surface);padding:12px 16px 10px;min-width:0;position:relative}
+  .card.dragging{opacity:.55}
+  .card.drop-before::before,.card.drop-after::after{content:"";position:absolute;left:0;right:0;height:3px;background:var(--accent);z-index:5}
+  .card.drop-before::before{top:-2px}
+  .card.drop-after::after{bottom:-2px}
+  .card-hdr{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+  .grip{cursor:grab;touch-action:none;color:var(--muted);padding:2px 6px 2px 0;font-size:16px;line-height:1.2;user-select:none;-webkit-user-select:none;background:none;border:none}
+  .grip:active{cursor:grabbing}
+  .cinfo{flex:1 1 auto;min-width:0}
+  .cname{font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cmeta{font-size:10px;color:var(--muted);margin-top:2px}
+  .ctime{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:3px}
+  .rm{border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:0 6px;border-radius:10px}
+  .rm:hover{color:var(--danger)}
+  .cerr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--danger);font-size:11px;padding:6px 0 8px}
+  .cload{color:var(--muted);font-size:11px;padding:6px 0 8px}
+  .cbody{display:flex;position:relative}
+  .axis{flex:none;display:block}
+  .scroller{flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;position:relative}
+  .sc-inner{position:relative}
+  .sc-inner canvas{display:block}
+  .nowline,.curline{position:absolute;top:0;bottom:0;width:0;pointer-events:none}
+  .nowline{border-left:1px dashed var(--danger);opacity:.8}
+  .curline{border-left:1px solid var(--text);opacity:.7}
+  .curtag{position:absolute;top:2px;pointer-events:none;background:var(--text);color:var(--surface);font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .legs{position:absolute;top:0;left:0;right:0;pointer-events:none}
+  .leg{position:absolute;left:6px;right:2px;height:16px;line-height:16px;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .leg b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+  .leg i{display:inline-block;width:10px;height:3px;border-radius:2px;margin:0 4px 2px 10px;vertical-align:middle}
+  .leg i:first-child{margin-left:0}
+  .leg i.box{height:8px;margin-bottom:1px;opacity:.7}
+  .note{padding:10px 20px;font-size:10px;line-height:1.5;color:var(--muted);max-width:90ch}
+  .empty{color:var(--muted);font-size:11px;padding:16px}
+  footer{padding:10px 20px 20px;font-size:10px;color:var(--muted)}
+  footer a{color:var(--accent);text-decoration:none}
+  footer a:hover{text-decoration:underline}
+  @media (max-width:600px){
+    header{padding:16px 16px 12px}
+    .controls,.status,.note,footer{padding-left:16px;padding-right:16px}
+    .controls input,.controls button{font-size:16px;min-height:40px}
+    .loc-form{flex-basis:100%}
+    #locInput{flex-basis:100%}
+    #addBtn{flex:1}
+    .seg button{min-height:34px;padding:4px 10px}
+    .card{padding:12px 16px 8px}
+    .rm{min-height:0;font-size:20px}
+    .grip{min-height:0;font-size:20px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Meteogram Dashboard</h1>
+  <div class="sub">Multi-panel forecast meteograms for the places you pick &middot; temperature, humidity, precipitation, freezing level, clouds and wind &middot; <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></div>
+</header>
+
+<div class="controls">
+  <form class="loc-form" id="locForm" onsubmit="onAdd(); return false;">
+    <input type="text" id="locInput" placeholder="Zip, place, or lat, lon" enterkeyhint="search"
+           autocomplete="off" autocapitalize="words" spellcheck="false" aria-label="Location">
+    <button type="submit" id="addBtn" title="Add place">+ Add</button>
+    <button type="button" id="geoBtn" onclick="useMyLocation()" title="Add my location" aria-label="Add my location">&#128205;</button>
+  </form>
+  <div class="grp">
+    <label>Days</label>
+    <div class="seg" id="rangeSeg" role="group" aria-label="Forecast length in days"></div>
+  </div>
+  <div class="grp">
+    <label>Units</label>
+    <div class="seg" id="unitSeg" role="group" aria-label="Units">
+      <button type="button" data-units="imperial" aria-pressed="true">&deg;F &middot; mph &middot; in</button>
+      <button type="button" data-units="metric" aria-pressed="false">&deg;C &middot; km/h &middot; mm</button>
+    </div>
+  </div>
+  <div class="grp">
+    <button type="button" id="refreshBtn" onclick="refreshAll()" title="Reload all forecasts">&#8635; Refresh</button>
+    <span class="upd" id="upd"></span>
+  </div>
+</div>
+
+<div class="status" id="status"></div>
+
+<div class="cards" id="cards"></div>
+
+<div class="note">
+  Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
+  (Open-Meteo assumes about 0.7&nbsp;cm of snow per mm of water). Beyond 7 days the data are shown as 3-hour
+  values (precipitation summed, precipitation probability at its maximum, other variables averaged).
+  At 14 and 16 days the shaded bands are the 10th&ndash;90th percentile spread of the 31-member NOAA GEFS ensemble.
+  The red dashed line is the current time. Times are each place&rsquo;s local time; the crosshair marks the same instant on every chart.
+</div>
+
+<footer>
+  <a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a>
+  (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>)
+</footer>
+
+<script>
+// ── Theme: light 7am-7pm, dark otherwise ──────────────────────────────────
+// Returns true when the theme changed (re-checked every minute)
+function applyTheme() {
+  var h = new Date().getHours();
+  var light = h >= 7 && h < 19;
+  var was = document.documentElement.classList.contains('light');
+  if (light) document.documentElement.classList.add('light');
+  else document.documentElement.classList.remove('light');
+  return light !== was;
+}
+applyTheme();
+
+// ── Constants ──────────────────────────────────────────────────────────────
+var MAX_PLACES = 30;
+var PLACES_KEY = 'meteogram.places';
+var UNITS_KEY = 'meteogram.units';
+var DEFAULT_PLACE = { lat: 40.7608, lon: -111.8910, label: 'Salt Lake City, UT' };
+var RANGES = [3, 5, 7, 14, 16];
+var DEFAULT_DAYS = 7;
+var FETCH_DAYS = 16;            // always fetch the full range, slice client-side
+var HOURLY_MAX_DAYS = 7;        // ranges up to this show hourly data, longer ones are aggregated
+var AGG_HOURS = 3;              // aggregation bin for long ranges
+var ENS_MIN_DAYS = 14;          // ensemble bands are drawn for ranges at least this long
+var ENS_MODEL = 'gfs_seamless'; // NOAA GEFS: 31 members, full 16 days, hourly, no gaps
+var ENS_LO = 0.10, ENS_HI = 0.90, ENS_MIN_MEMBERS = 5;
+var SNOW_CM_PER_MM = 0.7;       // Open-Meteo: 1 mm water -> 0.7 cm snow (checked against live responses)
+var HOUR_MS = 36e5, DAY_MS = 864e5;
+var REFRESH_MS = 36e5;          // data older than this is reloaded while the tab is visible
+var AXIS_W = 62;                // pinned y-axis column, px
+var MIN_PX_PER_HOUR = 5;        // narrowest readable chart: 120 px per day
+var ICON_MIN_PX = 32, ARROW_MIN_PX = 28;   // minimum spacing of icons / wind arrows
+var FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+var ENSEMBLE_URL = 'https://ensemble-api.open-meteo.com/v1/ensemble';
+var HOURLY_VARS = ['temperature_2m', 'apparent_temperature', 'relative_humidity_2m', 'dew_point_2m',
+  'precipitation', 'rain', 'showers', 'snowfall', 'precipitation_probability', 'weather_code',
+  'freezing_level_height', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high',
+  'sunshine_duration', 'wind_speed_10m', 'wind_direction_10m', 'is_day'];
+
+// Data are always requested in SI-ish units (degC, km/h, mm, cm, m) and converted
+// for display, so both unit systems come from the same numbers.
+var UNITS = {
+  imperial: {
+    temp:   { f: function(c) { return c * 9 / 5 + 32; }, u: '°F' },
+    wind:   { f: function(k) { return k * 0.621371; }, u: 'mph' },
+    precip: { f: function(m) { return m / 25.4; }, u: 'in', dp: 2, min: 0.1 },
+    snow:   { f: function(c) { return c / 2.54; }, u: 'in', dp: 1 },
+    height: { f: function(m) { return m * 3.28084; }, u: 'ft' },
+    hour12: true
+  },
+  metric: {
+    temp:   { f: function(c) { return c; }, u: '°C' },
+    wind:   { f: function(k) { return k; }, u: 'km/h' },
+    precip: { f: function(m) { return m; }, u: 'mm', dp: 1, min: 2 },
+    snow:   { f: function(c) { return c; }, u: 'cm', dp: 1 },
+    height: { f: function(m) { return m; }, u: 'm' },
+    hour12: false
+  }
+};
+
+var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+
+// WMO weather codes: [description, icon kind, intensity 0-3]
+var WMO = {
+  0: ['Clear sky', 'clear', 0], 1: ['Mainly clear', 'mclear', 0], 2: ['Partly cloudy', 'pcloudy', 0], 3: ['Overcast', 'cloudy', 0],
+  45: ['Fog', 'fog', 0], 48: ['Rime fog', 'fog', 0],
+  51: ['Light drizzle', 'drizzle', 1], 53: ['Drizzle', 'drizzle', 2], 55: ['Heavy drizzle', 'drizzle', 3],
+  56: ['Light freezing drizzle', 'frz', 1], 57: ['Freezing drizzle', 'frz', 3],
+  61: ['Light rain', 'rain', 1], 63: ['Rain', 'rain', 2], 65: ['Heavy rain', 'rain', 3],
+  66: ['Light freezing rain', 'frz', 2], 67: ['Freezing rain', 'frz', 3],
+  71: ['Light snow', 'snow', 1], 73: ['Snow', 'snow', 2], 75: ['Heavy snow', 'snow', 3], 77: ['Snow grains', 'snow', 1],
+  80: ['Light rain showers', 'shower', 1], 81: ['Rain showers', 'shower', 2], 82: ['Violent rain showers', 'shower', 3],
+  85: ['Light snow showers', 'sshower', 1], 86: ['Heavy snow showers', 'sshower', 3],
+  95: ['Thunderstorm', 'thunder', 0], 96: ['Thunderstorm, slight hail', 'thunder', 1], 99: ['Thunderstorm, heavy hail', 'thunder', 2]
+};
+
+// Vertical layout shared by every card (CSS px). Each panel starts with a 16 px legend strip.
+var TIME_H = 36, PANEL_GAP = 6, LEG_H = 16;
+var PANEL_DEFS = [
+  { id: 'icons', h: 48 }, { id: 'temp', h: 150 }, { id: 'hum', h: 96 }, { id: 'precip', h: 122 },
+  { id: 'frz', h: 84 }, { id: 'cloud', h: 112 }, { id: 'wind', h: 130 }
+];
+var LAY = (function() {
+  var y = TIME_H, out = {};
+  PANEL_DEFS.forEach(function(d) {
+    out[d.id] = { y: y, h: d.h, top: y + LEG_H + 2, bot: y + d.h - 4 };
+    y += d.h + PANEL_GAP;
+  });
+  out.total = y - PANEL_GAP + 2;
+  return out;
+})();
+
+// Legend items per panel: [value key, name, palette key (null = no swatch), swatch kind]
+var LEGENDS = {
+  icons:  [['wx', '', null]],
+  temp:   [['temp', 'Temperature', 'temp'], ['app', 'Feels like', 'app']],
+  hum:    [['rh', 'Humidity', 'hum'], ['dew', 'Dew point', 'dew']],
+  precip: [['rain', 'Rain', 'rain', 'box'], ['snow', 'Snow', 'snow', 'box'], ['prob', 'Chance', 'prob']],
+  frz:    [['frz', 'Freezing level', 'frz']],
+  cloud:  [['ch', 'High', 'cloud', 'box'], ['cm', 'Mid', 'cloud', 'box'], ['cl', 'Low', 'cloud', 'box'], ['sun', 'Sunshine', 'sun', 'box']],
+  wind:   [['ws', 'Wind', 'wind'], ['dir', 'From', null]]
+};
+
+// Chart colors (Okabe-Ito based); lighter variants on the dark theme
+function pal() {
+  var light = document.documentElement.classList.contains('light');
+  var cs = getComputedStyle(document.documentElement);
+  function v(n) { return cs.getPropertyValue(n).trim(); }
+  return light ? {
+    text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), danger: v('--danger'),
+    night: 'rgba(31,35,40,0.07)', grid: 'rgba(99,108,118,0.22)', day: 'rgba(99,108,118,0.45)',
+    temp: '#D55E00', app: '#CC79A7', hum: '#0072B2', dew: '#009E73',
+    rain: '#0072B2', snow: '#9ccbea', snowEdge: '#4f94c4', prob: '#7b4fc9', frz: '#0072B2',
+    cloud: '#57606a', sun: '#E69F00', wind: '#0969da',
+    sunIcon: '#e69f00', moonIcon: '#8c959f', cloudIcon: '#a8b1ba', cloudDark: '#6e7781', bolt: '#d4a72c'
+  } : {
+    text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), danger: v('--danger'),
+    night: 'rgba(255,255,255,0.05)', grid: 'rgba(139,148,158,0.22)', day: 'rgba(139,148,158,0.5)',
+    temp: '#E69F00', app: '#CC79A7', hum: '#56B4E9', dew: '#2DBE8C',
+    rain: '#56B4E9', snow: '#e6edf3', snowEdge: '#9fb3c8', prob: '#b18cf0', frz: '#56B4E9',
+    cloud: '#c9d1d9', sun: '#e8c23c', wind: '#58a6ff',
+    sunIcon: '#f0b429', moonIcon: '#c9d1d9', cloudIcon: '#8b949e', cloudDark: '#6e7681', bolt: '#f0c53d'
+  };
+}
+
+// ── App state ──────────────────────────────────────────────────────────────
+var PLACES = [];          // [{lat, lon, label, status, data, ens, el, ...}]
+var DAYS = DEFAULT_DAYS;
+var UNIT = 'imperial';
+var PPH = MIN_PX_PER_HOUR;   // chart pixels per hour, shared by all cards
+var cursorT = null;       // hovered instant (ms since epoch), shared by all cards
+var viewT = null;         // instant at the left edge of the last-scrolled card
+var searchSeq = 0;
+var pending = 0;
+
+function U() { return UNITS[UNIT]; }
+function cv(kind, v) { return v == null ? null : U()[kind].f(v); }
+function fv(v, dp) { return v == null || !isFinite(v) ? '–' : v.toFixed(dp); }
+function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+// ── Location lookups (same as swe_dashboard.html / day_length_change.html) ─
+function geocodeZip(zip) {
+  return fetch('https://api.zippopotam.us/us/' + encodeURIComponent(zip))
+    .then(function(r) {
+      if (!r.ok) throw new Error('Zip not found: ' + zip);
+      return r.json();
+    })
+    .then(function(j) {
+      var p = j.places && j.places[0];
+      if (!p) throw new Error('No location for zip ' + zip);
+      return {
+        lat:   parseFloat(p.latitude),
+        lon:   parseFloat(p.longitude),
+        city:  p['place name'],
+        state: p['state abbreviation']
+      };
+    });
+}
+
+var LATLON_RE = /^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/;
+
+function roundTo(x, dp) {
+  var f = Math.pow(10, dp);
+  return Math.round(x * f) / f;
+}
+
+// Nominatim policy: max 1 req/sec, no autocomplete -- only call on Add/Enter
+var nomNext = 0;
+function nominatim(url) {
+  var wait = Math.max(0, nomNext - Date.now());
+  nomNext = Date.now() + wait + 1100;
+  return new Promise(function(res) { setTimeout(res, wait); })
+    .then(function() { return fetch(url); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Place lookup failed (HTTP ' + r.status + ')');
+      return r.json();
+    });
+}
+
+// "City, ST" in the US, "City, Country" elsewhere
+function placeName(a) {
+  a = a || {};
+  var place = a.city || a.town || a.village || a.hamlet || a.municipality || a.county || a.state;
+  if (!place) return null;
+  var iso = a['ISO3166-2-lvl4'] || '';
+  if (iso.indexOf('US-') === 0) return place + ', ' + iso.slice(3);
+  var region = a.country || '';
+  return region && region !== place ? place + ', ' + region : place;
+}
+
+function nominatimSearch(q) {
+  return nominatim('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' +
+                   encodeURIComponent(q))
+    .then(function(j) {
+      if (!j.length) throw new Error('No place found for "' + q + '"');
+      return {
+        lat:   parseFloat(j[0].lat),
+        lon:   parseFloat(j[0].lon),
+        label: placeName(j[0].address) || j[0].display_name.split(',').slice(0, 3).join(',')
+      };
+    });
+}
+
+function reverseLabel(lat, lon) {
+  return nominatim('https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=' + lat + '&lon=' + lon)
+    .then(function(j) {
+      var p = placeName(j.address);
+      if (!p) throw new Error('No place name');
+      return p;
+    });
+}
+
+// Free text -> {lat, lon, label}. Tried in order: zip, lat/lon, place search.
+// Lat/lon are taken as typed (positive longitude = east).
+function resolveQuery(q) {
+  var m;
+  if (/^\d{5}$/.test(q)) {
+    return geocodeZip(q).then(function(c) {
+      return { lat: c.lat, lon: c.lon, label: c.city + ', ' + c.state + ' ' + q };
+    });
+  }
+  if ((m = q.match(LATLON_RE))) {
+    var lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return Promise.reject(new Error('Coordinates out of range: ' + q));
+    }
+    var coord = lat + ', ' + lon;
+    return reverseLabel(lat, lon)
+      .then(function(p) { return coord + ' (near ' + p + ')'; },
+            function()  { return coord + ' (no place found)'; })
+      .then(function(label) { return { lat: lat, lon: lon, label: label }; });
+  }
+  return nominatimSearch(q);
+}
+
+function setStatus(msg, isErr) {
+  var el = document.getElementById('status');
+  el.textContent = msg || '';
+  el.className = 'status' + (isErr ? ' err' : '');
+}
+
+function onAdd() {
+  var q = document.getElementById('locInput').value.trim();
+  if (!q) return;
+  if (PLACES.length >= MAX_PLACES) { setStatus('Up to ' + MAX_PLACES + ' places', true); return; }
+  var seq = ++searchSeq;
+  setStatus('Looking up ' + q + '…');
+  resolveQuery(q)
+    .then(function(loc) {
+      if (seq !== searchSeq) return;
+      if (addPlace(loc)) document.getElementById('locInput').value = '';
+    })
+    .catch(function(e) {
+      if (seq !== searchSeq) return;
+      setStatus('Error: ' + e.message, true);
+    });
+}
+
+function useMyLocation() {
+  if (PLACES.length >= MAX_PLACES) { setStatus('Up to ' + MAX_PLACES + ' places', true); return; }
+  if (!navigator.geolocation) {
+    setStatus('Location is not available in this browser', true);
+    return;
+  }
+  var seq = ++searchSeq;
+  setStatus('Getting your location…');
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    if (seq !== searchSeq) return;
+    var lat = roundTo(pos.coords.latitude, 2), lon = roundTo(pos.coords.longitude, 2);
+    setStatus('Looking up place name…');
+    reverseLabel(lat, lon)
+      .then(function(p) { return 'Near ' + p; },
+            function()  { return 'My location (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')'; })
+      .then(function(label) {
+        if (seq !== searchSeq) return;
+        addPlace({ lat: lat, lon: lon, label: label });
+      });
+  }, function(err) {
+    if (seq !== searchSeq) return;
+    setStatus('Location unavailable: ' + err.message, true);
+  }, { timeout: 15000, maximumAge: 300000 });
+}
+
+// ── Place list: validation, localStorage ───────────────────────────────────
+function validPlace(lat, lon, label) {
+  lat = parseFloat(lat); lon = parseFloat(lon);
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  lat = roundTo(lat, 4); lon = roundTo(lon, 4);
+  return { lat: lat, lon: lon, label: label || (lat + ', ' + lon) };
+}
+
+function loadSavedPlaces() {
+  try {
+    var a = JSON.parse(localStorage.getItem(PLACES_KEY));
+    if (!Array.isArray(a)) return [];
+    return a.map(function(o) { return o && validPlace(o.lat, o.lon, o.label); })
+            .filter(Boolean).slice(0, MAX_PLACES);
+  } catch (e) { return []; }
+}
+
+function savePlaces() {
+  try {
+    localStorage.setItem(PLACES_KEY, JSON.stringify(PLACES.map(function(p) {
+      return { lat: p.lat, lon: p.lon, label: p.label };
+    })));
+  } catch (e) {}
+}
+
+function loadSavedUnits() {
+  try {
+    var v = localStorage.getItem(UNITS_KEY);
+    return UNITS[v] ? v : null;
+  } catch (e) { return null; }
+}
+
+function saveUnits() {
+  try { localStorage.setItem(UNITS_KEY, UNIT); } catch (e) {}
+}
+
+function addPlace(loc) {
+  loc = validPlace(loc.lat, loc.lon, loc.label);
+  if (!loc) { setStatus('Invalid location', true); return false; }
+  if (PLACES.length >= MAX_PLACES) { setStatus('Up to ' + MAX_PLACES + ' places', true); return false; }
+  if (PLACES.some(function(p) { return p.lat === loc.lat && p.lon === loc.lon; })) {
+    setStatus(loc.label + ' is already shown', true);
+    return false;
+  }
+  setStatus('');
+  var p = makePlace(loc);
+  PLACES.push(p);
+  savePlaces();
+  document.getElementById('cards').appendChild(buildCard(p));
+  loadPlace(p);
+  return true;
+}
+
+function removePlace(p) {
+  p.removed = true;
+  PLACES = PLACES.filter(function(q) { return q !== p; });
+  if (p.el && p.el.root.parentNode) p.el.root.parentNode.removeChild(p.el.root);
+  savePlaces();
+  setStatus('');
+  showEmpty();
+  updateStamp();
+}
+
+function makePlace(loc) {
+  return { lat: loc.lat, lon: loc.lon, label: loc.label, status: 'loading', err: '', ensStatus: 'idle',
+           data: null, ens: null, fetchedAt: 0, attemptAt: 0, seq: 0, ensSeq: 0, el: null, layout: null };
+}
+
+function showEmpty() {
+  var c = document.getElementById('cards');
+  var e = document.getElementById('emptyMsg');
+  if (!PLACES.length && !e) {
+    e = document.createElement('div');
+    e.id = 'emptyMsg';
+    e.className = 'empty';
+    e.style.background = 'var(--surface)';
+    e.textContent = 'No places yet. Add a zip code, place name, or lat, lon above.';
+    c.appendChild(e);
+  } else if (PLACES.length && e) {
+    e.parentNode.removeChild(e);
+  }
+}
+
+// ── Time zones: each place uses the IANA zone Open-Meteo reports ───────────
+// Wall-clock parts of instant ms in the place's zone; falls back to the fixed
+// utc_offset_seconds of the response if Intl doesn't know the zone.
+var PARTS_FMT = {}, ABBR_FMT = {};
+function partsFmt(cache, tz, opts) {
+  if (!(tz in cache)) {
+    try { opts.timeZone = tz; cache[tz] = new Intl.DateTimeFormat('en-US', opts); }
+    catch (e) { cache[tz] = null; }
+  }
+  return cache[tz];
+}
+
+function zparts(p, ms) {
+  var z = p.zone, f = z.tz ? partsFmt(PARTS_FMT, z.tz, { hourCycle: 'h23', year: 'numeric', month: 'numeric',
+    day: 'numeric', hour: 'numeric', minute: 'numeric' }) : null;
+  var y, mo, d, h, mi;
+  if (f) {
+    var o = {};
+    f.formatToParts(new Date(ms)).forEach(function(x) { o[x.type] = x.value; });
+    y = +o.year; mo = +o.month; d = +o.day; h = +o.hour % 24; mi = +o.minute;
+  } else {
+    var u = new Date(ms + z.off * 1000);
+    y = u.getUTCFullYear(); mo = u.getUTCMonth() + 1; d = u.getUTCDate(); h = u.getUTCHours(); mi = u.getUTCMinutes();
+  }
+  return { y: y, mo: mo, d: d, h: h, mi: mi, wd: new Date(Date.UTC(y, mo - 1, d)).getUTCDay() };
+}
+
+function utcLabel(off) {
+  var a = Math.abs(off) / 60, h = Math.floor(a), m = Math.round((a - h) * 60);
+  return 'UTC' + (off === 0 ? '' : (off < 0 ? '−' : '+') + h + (m ? ':' + pad2(m) : ''));
+}
+
+function zoneAbbr(p, ms) {
+  var f = p.zone.tz ? partsFmt(ABBR_FMT, p.zone.tz, { timeZoneName: 'short' }) : null;
+  if (f) {
+    var name = null;
+    f.formatToParts(new Date(ms)).forEach(function(x) { if (x.type === 'timeZoneName') name = x.value; });
+    if (name) return name;
+  }
+  return utcLabel(p.zone.off);
+}
+
+function hourLabel(h, short) {
+  if (!U().hour12) return pad2(h);
+  var h12 = h % 12 === 0 ? 12 : h % 12;
+  return h12 + (short ? (h < 12 ? 'a' : 'p') : (h < 12 ? ' AM' : ' PM'));
+}
+
+function clockLabel(w) {
+  return U().hour12 ? hourLabel(w.h) .replace(' ', ':' + pad2(w.mi) + ' ') : pad2(w.h) + ':' + pad2(w.mi);
+}
+
+// ── Fetching ───────────────────────────────────────────────────────────────
+function fetchJson(url) {
+  return fetch(url).then(function(r) {
+    if (r.ok) return r.json();
+    return r.text().then(function(t) {
+      var why = '';
+      try { why = JSON.parse(t).reason || ''; } catch (e) {}
+      throw new Error('Open-Meteo request failed (HTTP ' + r.status + ')' + (why ? ': ' + why : ''));
+    });
+  });
+}
+
+function forecastUrl(p) {
+  return FORECAST_URL + '?latitude=' + p.lat + '&longitude=' + p.lon +
+    '&hourly=' + HOURLY_VARS.join(',') + '&daily=sunrise,sunset' +
+    '&timezone=auto&forecast_days=' + FETCH_DAYS + '&timeformat=unixtime' +
+    '&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm';
+}
+
+function ensembleUrl(p) {
+  return ENSEMBLE_URL + '?latitude=' + p.lat + '&longitude=' + p.lon +
+    '&hourly=temperature_2m,precipitation&models=' + ENS_MODEL +
+    '&timezone=auto&forecast_days=' + FETCH_DAYS + '&timeformat=unixtime' +
+    '&temperature_unit=celsius&precipitation_unit=mm';
+}
+
+// Column of hourly values, or all-null if the variable is missing from the response
+function col(h, name, n) {
+  var a = h[name];
+  if (Array.isArray(a) && a.length === n) return a;
+  var out = [];
+  for (var i = 0; i < n; i++) out.push(null);
+  return out;
+}
+
+// Validate a forecast response and derive per-hour rain / snow water equivalents.
+// Open-Meteo's `showers` can fall as snow, so rain is taken as total precipitation
+// minus the snow water equivalent (snowfall depth / 0.7 cm per mm), not rain+showers.
+function parseForecast(j, p) {
+  if (!j || !j.hourly || !Array.isArray(j.hourly.time) || !j.hourly.time.length) {
+    throw new Error('Open-Meteo returned no hourly data');
+  }
+  var n = j.hourly.time.length, h = {};
+  h.time = j.hourly.time.map(function(s) { return s * 1000; });
+  HOURLY_VARS.forEach(function(k) { h[k] = col(j.hourly, k, n); });
+  h.snowWE = []; h.rainW = [];
+  for (var i = 0; i < n; i++) {
+    var pr = h.precipitation[i], sn = h.snowfall[i];
+    var we = sn == null ? null : sn / SNOW_CM_PER_MM;
+    if (pr != null && we != null) we = Math.min(we, pr);
+    h.snowWE.push(we);
+    h.rainW.push(pr == null ? null : Math.max(0, pr - (we || 0)));
+  }
+  // sun-up intervals from daily sunrise/sunset; null if any day lacks them (polar)
+  var d = j.daily || {}, ups = [], ok = Array.isArray(d.sunrise) && Array.isArray(d.sunset) && d.sunrise.length > 0;
+  if (ok) {
+    for (var k = 0; k < d.sunrise.length; k++) {
+      var r = d.sunrise[k], s = d.sunset[k];
+      if (typeof r !== 'number' || typeof s !== 'number' || s <= r) { ok = false; break; }
+      ups.push([r * 1000, s * 1000]);
+    }
+  }
+  var zone = { tz: j.timezone || null, off: j.utc_offset_seconds || 0 };
+  p.zone = zone;
+  return { time: h.time, h: h, ups: ok ? ups : null, elev: j.elevation, zone: zone, n: n };
+}
+
+// Ensemble members for temperature and precipitation, indexed by timestamp
+function parseEnsemble(j) {
+  if (!j || !j.hourly || !Array.isArray(j.hourly.time)) throw new Error('Ensemble returned no hourly data');
+  var hh = j.hourly, e = { idx: {}, temp: [], prec: [] };
+  hh.time.forEach(function(s, i) { e.idx[s * 1000] = i; });
+  Object.keys(hh).forEach(function(k) {
+    if (/^temperature_2m(_member\d+)?$/.test(k)) e.temp.push(hh[k]);
+    else if (/^precipitation(_member\d+)?$/.test(k)) e.prec.push(hh[k]);
+  });
+  if (e.temp.length < ENS_MIN_MEMBERS) throw new Error('Ensemble returned too few members');
+  return e;
+}
+
+function loadPlace(p) {
+  var seq = ++p.seq;
+  p.status = p.data ? p.status : 'loading';
+  p.attemptAt = Date.now();
+  p.err = '';
+  pending++;
+  syncRefreshBtn();
+  renderCardState(p);
+  return fetchJson(forecastUrl(p))
+    .then(function(j) {
+      if (seq !== p.seq || p.removed) return;
+      p.data = parseForecast(j, p);
+      prepareDays(p);
+      p.status = 'ok';
+      p.err = '';
+      p.fetchedAt = Date.now();
+    })
+    .catch(function(e) {
+      if (seq !== p.seq || p.removed) return;
+      p.err = e && e.message ? e.message : 'Fetch failed';
+      if (!p.data) p.status = 'error';
+      console.warn('Forecast fetch failed for ' + p.label + ':', e);
+    })
+    .then(function() {
+      pending--;
+      syncRefreshBtn();
+      if (p.removed) return;
+      if (seq === p.seq) {
+        renderCardState(p);
+        renderCard(p);
+        updateStamp();
+        if (p.status === 'ok' && (DAYS >= ENS_MIN_DAYS || p.ens)) loadEnsemble(p);
+      }
+    });
+}
+
+function loadEnsemble(p) {
+  var seq = ++p.ensSeq;
+  p.ensStatus = 'loading';
+  return fetchJson(ensembleUrl(p))
+    .then(function(j) {
+      if (seq !== p.ensSeq || p.removed) return;
+      p.ens = parseEnsemble(j);
+      p.ensStatus = 'ok';
+    })
+    .catch(function(e) {
+      if (seq !== p.ensSeq || p.removed) return;
+      p.ens = null;
+      p.ensStatus = 'error';
+      console.warn('Ensemble fetch failed for ' + p.label + ':', e);
+    })
+    .then(function() {
+      if (seq !== p.ensSeq || p.removed) return;
+      renderCard(p);
+    });
+}
+
+function refreshAll() {
+  PLACES.forEach(function(p) { loadPlace(p); });
+}
+
+function syncRefreshBtn() {
+  document.getElementById('refreshBtn').disabled = pending > 0;
+}
+
+function updateStamp() {
+  var t = 0;
+  PLACES.forEach(function(p) { if (p.fetchedAt > t) t = p.fetchedAt; });
+  var d = new Date(t);
+  document.getElementById('upd').textContent = t ? 'updated ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) : '';
+}
+
+// Hourly auto-refresh while the tab is visible; a hidden tab catches up when shown
+function refreshStale() {
+  if (document.visibilityState !== 'visible') return;
+  var now = Date.now();
+  PLACES.forEach(function(p) {
+    if (now - p.attemptAt > REFRESH_MS) loadPlace(p);
+  });
+}
+
+// ── Series: slice to the chosen range, aggregate to 3 h for long ranges ────
+function agg(arr, i0, i1, mode) {
+  var s = 0, c = 0, mx = null;
+  for (var i = i0; i < i1; i++) {
+    var v = arr[i];
+    if (v == null || !isFinite(v)) continue;
+    s += v; c++;
+    if (mx == null || v > mx) mx = v;
+  }
+  if (!c) return null;
+  return mode === 'sum' ? s : mode === 'max' ? mx : s / c;
+}
+
+// Speed-weighted circular mean of wind direction (degrees)
+function aggDir(dir, spd, i0, i1) {
+  var sx = 0, sy = 0, c = 0;
+  for (var i = i0; i < i1; i++) {
+    if (dir[i] == null) continue;
+    var w = spd[i] == null ? 1 : spd[i];
+    sx += w * Math.sin(dir[i] * Math.PI / 180);
+    sy += w * Math.cos(dir[i] * Math.PI / 180);
+    c++;
+  }
+  if (!c) return null;
+  if (Math.abs(sx) < 1e-9 && Math.abs(sy) < 1e-9) return dir[i0];
+  return (Math.atan2(sx, sy) * 180 / Math.PI + 360) % 360;
+}
+
+// Weather code for a bin: worst precipitating code if any hour precipitates, else the middle hour
+function aggCode(code, i0, i1) {
+  var mx = -1;
+  for (var i = i0; i < i1; i++) if (code[i] != null && code[i] > mx) mx = code[i];
+  if (mx >= 51) return mx;
+  var mid = code[i0 + Math.floor((i1 - i0) / 2)];
+  return mid == null ? (mx < 0 ? null : mx) : mid;
+}
+
+// Timestamps (ms) are those of the first hour in each bin. Precipitation and
+// sunshine are preceding-hour totals in Open-Meteo, so their bars span
+// [t - 1 h, t + (step - 1) h]; instantaneous values sit at the bin's mean time.
+function buildSeries(p) {
+  var h = p.data.h, step = DAYS <= HOURLY_MAX_DAYS ? 1 : AGG_HOURS;
+  var nH = Math.min(DAYS * 24, p.data.n);
+  var n = Math.floor(nH / step);
+  var S = { step: step, n: n, hours: n * step, t: [], i0: [], temp: [], app: [], rh: [], dew: [], rain: [], snowWE: [],
+            snowCm: [], precip: [], prob: [], frz: [], cl: [], cm: [], ch: [], sun: [], ws: [], dir: [],
+            code: [], day: [] };
+  for (var b = 0; b < n; b++) {
+    var i0 = b * step, i1 = i0 + step;
+    S.t.push(h.time[i0]); S.i0.push(i0);
+    S.temp.push(agg(h.temperature_2m, i0, i1, 'mean'));
+    S.app.push(agg(h.apparent_temperature, i0, i1, 'mean'));
+    S.rh.push(agg(h.relative_humidity_2m, i0, i1, 'mean'));
+    S.dew.push(agg(h.dew_point_2m, i0, i1, 'mean'));
+    S.rain.push(agg(h.rainW, i0, i1, 'sum'));
+    S.snowWE.push(agg(h.snowWE, i0, i1, 'sum'));
+    S.snowCm.push(agg(h.snowfall, i0, i1, 'sum'));
+    S.precip.push(agg(h.precipitation, i0, i1, 'sum'));
+    S.prob.push(agg(h.precipitation_probability, i0, i1, 'max'));
+    S.frz.push(agg(h.freezing_level_height, i0, i1, 'mean'));
+    S.cl.push(agg(h.cloud_cover_low, i0, i1, 'mean'));
+    S.cm.push(agg(h.cloud_cover_mid, i0, i1, 'mean'));
+    S.ch.push(agg(h.cloud_cover_high, i0, i1, 'mean'));
+    S.sun.push(agg(h.sunshine_duration, i0, i1, 'sum'));
+    S.ws.push(agg(h.wind_speed_10m, i0, i1, 'mean'));
+    S.dir.push(aggDir(h.wind_direction_10m, h.wind_speed_10m, i0, i1));
+    S.code.push(aggCode(h.weather_code, i0, i1));
+    S.day.push(h.is_day[i0 + Math.floor(step / 2)]);
+  }
+  return S;
+}
+
+function quantile(sorted, q) {
+  var pos = (sorted.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+// Ensemble spread on the same bins as the main series: members' bin mean
+// (temperature) or bin sum (precipitation), then the 10th/90th percentile across members
+function buildEns(p, S) {
+  var e = p.ens, t = p.data.time;
+  var E = { tLo: [], tHi: [], pLo: [], pHi: [] };
+  function spread(members, i0, mode) {
+    var vals = [];
+    members.forEach(function(m) {
+      var s = 0, c = 0;
+      for (var k = 0; k < S.step; k++) {
+        var ei = e.idx[t[i0 + k]];
+        var v = ei == null ? null : m[ei];
+        if (v != null && isFinite(v)) { s += v; c++; }
+      }
+      if (c) vals.push(mode === 'sum' ? s : s / c);
+    });
+    if (vals.length < ENS_MIN_MEMBERS) return [null, null];
+    vals.sort(function(a, b) { return a - b; });
+    return [quantile(vals, ENS_LO), quantile(vals, ENS_HI)];
+  }
+  for (var b = 0; b < S.n; b++) {
+    var tt = spread(e.temp, S.i0[b], 'mean'), pp = spread(e.prec, S.i0[b], 'sum');
+    E.tLo.push(tt[0]); E.tHi.push(tt[1]); E.pLo.push(pp[0]); E.pHi.push(pp[1]);
+  }
+  return E;
+}
+
+// Per place, once per load: local day starts and wall-clock hours of every hourly stamp
+function prepareDays(p) {
+  var t = p.data.time, days = [], wall = [], prev = null;
+  for (var i = 0; i < t.length; i++) {
+    var w = zparts(p, t[i]);
+    wall.push(w);
+    if (!prev || w.d !== prev.d) days.push({ i: i, t: t[i], w: w });
+    prev = w;
+  }
+  p.data.wall = wall;
+  p.data.days = days;
+}
+
+// ── Scales ─────────────────────────────────────────────────────────────────
+// Round-number axis covering [min, max] with about `target` intervals
+function niceScale(min, max, target) {
+  if (!isFinite(min) || !isFinite(max)) { min = 0; max = 1; }
+  if (max - min < 1e-9) { min -= 1; max += 1; }
+  var raw = (max - min) / target, mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), nm = raw / mag;
+  var step = (nm <= 1 ? 1 : nm <= 2 ? 2 : nm <= 5 ? 5 : 10) * mag;
+  var lo = Math.floor(min / step + 1e-9) * step, hi = Math.ceil(max / step - 1e-9) * step;
+  var ticks = [];
+  for (var v = lo; v <= hi + step * 1e-6; v += step) ticks.push(roundTo(v, 6));
+  return { lo: lo, hi: hi, step: step, ticks: ticks };
+}
+
+function tickDp(step) { return step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log(step) / Math.LN10 - 1e-9)); }
+
+function range(arrs) {
+  var lo = Infinity, hi = -Infinity;
+  arrs.forEach(function(a) {
+    a.forEach(function(v) {
+      if (v == null || !isFinite(v)) return;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    });
+  });
+  return lo > hi ? null : [lo, hi];
+}
+
+function mapArr(a, kind) { return a.map(function(v) { return cv(kind, v); }); }
+
+function computeScales(S, E) {
+  var sc = {};
+  var tr = range([mapArr(S.temp, 'temp'), mapArr(S.app, 'temp'),
+                  E ? mapArr(E.tLo, 'temp') : [], E ? mapArr(E.tHi, 'temp') : []]) || [0, 1];
+  var padT = Math.max(2, (tr[1] - tr[0]) * 0.18);
+  sc.temp = niceScale(tr[0] - padT, tr[1] + padT, 4);
+  sc.hum = { lo: 0, hi: 100 };
+  var dr = range([mapArr(S.dew, 'temp')]) || [0, 1];
+  var dstep = niceScale(dr[0], dr[1], 2).step;
+  var dlo = Math.floor(dr[0] / dstep) * dstep;
+  while (dlo + 2 * dstep < dr[1]) dstep *= 2, dlo = Math.floor(dr[0] / dstep) * dstep;
+  sc.dew = { lo: dlo, hi: dlo + 2 * dstep, step: dstep };
+  var bars = [];
+  for (var i = 0; i < S.n; i++) {
+    bars.push(cv('precip', (S.rain[i] || 0) + (S.snowWE[i] || 0)));
+    if (E && E.pHi[i] != null) bars.push(cv('precip', E.pHi[i]));
+  }
+  var pmax = Math.max(U().precip.min, range([bars]) ? range([bars])[1] : 0);
+  sc.precip = niceScale(0, pmax * 1.1, 3);
+  var fr = range([mapArr(S.frz, 'height')]);
+  sc.frz = niceScale(Math.min(0, fr ? fr[0] : 0), fr ? Math.max(fr[1], 1) : 1, 3);
+  var wr = range([mapArr(S.ws, 'wind')]);
+  sc.wind = niceScale(0, wr ? Math.max(wr[1], 1) * 1.05 : 1, 3);
+  return sc;
+}
+
+// ── Canvas helpers ─────────────────────────────────────────────────────────
+function setupCanvas(cv_, w, h) {
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv_.width = Math.round(w * dpr);
+  cv_.height = Math.round(h * dpr);
+  cv_.style.width = w + 'px';
+  cv_.style.height = h + 'px';
+  var ctx = cv_.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return ctx;
+}
+
+function linePath(ctx, xs, ys) {
+  var pen = false;
+  ctx.beginPath();
+  for (var i = 0; i < xs.length; i++) {
+    if (ys[i] == null) { pen = false; continue; }
+    if (pen) ctx.lineTo(xs[i], ys[i]); else ctx.moveTo(xs[i], ys[i]);
+    pen = true;
+  }
+}
+
+function strokeLine(ctx, xs, ys, color, w, dash) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineJoin = 'round';
+  ctx.setLineDash(dash || []);
+  linePath(ctx, xs, ys);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function fillBand(ctx, xs, lo, hi, color) {
+  var n = xs.length, i = 0, k;
+  ctx.fillStyle = color;
+  while (i < n) {
+    while (i < n && (lo[i] == null || hi[i] == null)) i++;
+    var j = i;
+    while (j < n && lo[j] != null && hi[j] != null) j++;
+    if (j - i >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(xs[i], hi[i]);
+      for (k = i + 1; k < j; k++) ctx.lineTo(xs[k], hi[k]);
+      for (k = j - 1; k >= i; k--) ctx.lineTo(xs[k], lo[k]);
+      ctx.closePath();
+      ctx.fill();
+    }
+    i = j;
+  }
+}
+
+// Smallest sample spacing (in samples) from a fixed ladder so items sit at least minPx apart
+function sampleSkip(S, minPx) {
+  var ladder = [1, 2, 3, 4, 6, 8, 12, 24];
+  for (var k = 0; k < ladder.length; k++) {
+    if (ladder[k] * S.step * PPH >= minPx) return ladder[k];
+  }
+  return 24;
+}
+
+// ── Weather icons ──────────────────────────────────────────────────────────
+function iconCloud(ctx, cx, cy, s, fill) {
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(cx - 0.05 * s, cy + 0.08 * s); ctx.arc(cx - 0.2 * s, cy + 0.08 * s, 0.15 * s, 0, 2 * Math.PI);
+  ctx.moveTo(cx + 0.2 * s, cy - 0.06 * s); ctx.arc(cx - 0.02 * s, cy - 0.06 * s, 0.22 * s, 0, 2 * Math.PI);
+  ctx.moveTo(cx + 0.38 * s, cy + 0.08 * s); ctx.arc(cx + 0.24 * s, cy + 0.08 * s, 0.14 * s, 0, 2 * Math.PI);
+  ctx.rect(cx - 0.2 * s, cy + 0.08 * s, 0.44 * s, 0.15 * s);
+  ctx.fill();
+}
+
+function iconSun(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, r * 0.22); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.fill();
+  ctx.beginPath();
+  for (var k = 0; k < 8; k++) {
+    var a = k * Math.PI / 4;
+    ctx.moveTo(cx + Math.cos(a) * r * 1.45, cy + Math.sin(a) * r * 1.45);
+    ctx.lineTo(cx + Math.cos(a) * r * 1.9, cy + Math.sin(a) * r * 1.9);
+  }
+  ctx.stroke();
+}
+
+function iconMoon(ctx, cx, cy, r, color) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.clip();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.rect(cx - 2 * r, cy - 2 * r, 4 * r, 4 * r);
+  ctx.arc(cx + 0.5 * r, cy - 0.35 * r, 0.85 * r, 0, 2 * Math.PI);
+  ctx.fill('evenodd');
+  ctx.restore();
+}
+
+function iconDrops(ctx, cx, y, s, n, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, s * 0.07); ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (var k = 0; k < n; k++) {
+    var x = cx + (k - (n - 1) / 2) * s * 0.17;
+    ctx.moveTo(x + s * 0.03, y); ctx.lineTo(x - s * 0.03, y + s * 0.17);
+  }
+  ctx.stroke();
+}
+
+function iconFlakes(ctx, cx, y, s, n, color) {
+  ctx.fillStyle = color;
+  for (var k = 0; k < n; k++) {
+    var x = cx + (k - (n - 1) / 2) * s * 0.19;
+    ctx.beginPath(); ctx.arc(x, y + (k % 2) * s * 0.1 + s * 0.05, Math.max(1.2, s * 0.05), 0, 2 * Math.PI); ctx.fill();
+  }
+}
+
+function iconBolt(ctx, cx, y, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx + 0.04 * s, y - 0.02 * s); ctx.lineTo(cx - 0.1 * s, y + 0.15 * s);
+  ctx.lineTo(cx - 0.01 * s, y + 0.15 * s); ctx.lineTo(cx - 0.07 * s, y + 0.3 * s);
+  ctx.lineTo(cx + 0.11 * s, y + 0.1 * s); ctx.lineTo(cx + 0.02 * s, y + 0.1 * s);
+  ctx.closePath(); ctx.fill();
+}
+
+// Draw the icon for a WMO code centered at (cx, cy), size s px; day: sun vs moon
+function drawIcon(ctx, code, day, cx, cy, s, P) {
+  var w = WMO[code];
+  if (!w) {
+    ctx.fillStyle = P.muted; ctx.font = '12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', cx, cy);
+    return;
+  }
+  var kind = w[1], lvl = w[2];
+  function body(px, py, r) { if (day) iconSun(ctx, px, py, r, P.sunIcon); else iconMoon(ctx, px, py, r * 1.15, P.moonIcon); }
+  var cloudy = kind === 'rain' || kind === 'drizzle' || kind === 'frz' || kind === 'snow' || kind === 'thunder';
+  switch (kind) {
+    case 'clear': body(cx, cy, s * 0.2); break;
+    case 'mclear': body(cx - s * 0.08, cy - s * 0.05, s * 0.17); iconCloud(ctx, cx + s * 0.2, cy + s * 0.2, s * 0.5, P.cloudIcon); break;
+    case 'pcloudy': body(cx - s * 0.17, cy - s * 0.15, s * 0.15); iconCloud(ctx, cx + s * 0.05, cy + s * 0.05, s * 0.85, P.cloudIcon); break;
+    case 'cloudy': iconCloud(ctx, cx - s * 0.1, cy - s * 0.12, s * 0.65, P.cloudIcon); iconCloud(ctx, cx + s * 0.05, cy + s * 0.05, s * 0.85, P.cloudDark); break;
+    case 'fog':
+      iconCloud(ctx, cx, cy - s * 0.15, s * 0.8, P.cloudIcon);
+      ctx.strokeStyle = P.cloudIcon; ctx.lineWidth = Math.max(1.2, s * 0.07); ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.32, cy + s * 0.18); ctx.lineTo(cx + s * 0.32, cy + s * 0.18);
+      ctx.moveTo(cx - s * 0.24, cy + s * 0.32); ctx.lineTo(cx + s * 0.24, cy + s * 0.32);
+      ctx.stroke();
+      break;
+    case 'shower': case 'sshower':
+      body(cx - s * 0.2, cy - s * 0.2, s * 0.13);
+      iconCloud(ctx, cx + s * 0.02, cy - s * 0.1, s * 0.8, P.cloudDark);
+      break;
+    default:
+      if (cloudy) iconCloud(ctx, cx, cy - s * 0.14, s * 0.85, kind === 'thunder' || lvl >= 2 ? P.cloudDark : P.cloudIcon);
+  }
+  var dy = cy + s * 0.2;
+  if (kind === 'drizzle') iconDrops(ctx, cx, dy, s, lvl + 1, P.rain);
+  else if (kind === 'rain' || kind === 'shower') iconDrops(ctx, cx, dy, s, lvl + 1, P.rain);
+  else if (kind === 'frz') { iconDrops(ctx, cx - s * 0.1, dy, s, 2, P.rain); iconFlakes(ctx, cx + s * 0.2, dy, s, 1, P.snow); }
+  else if (kind === 'snow' || kind === 'sshower') iconFlakes(ctx, cx, dy, s, lvl + 2, P.snow === '#e6edf3' ? P.snow : P.snowEdge);
+  else if (kind === 'thunder') {
+    iconBolt(ctx, cx, dy - s * 0.04, s, P.bolt);
+    if (lvl) iconFlakes(ctx, cx + s * 0.22, dy + s * 0.08, s, lvl, P.snowEdge);
+  }
+}
+
+// ── Chart drawing ──────────────────────────────────────────────────────────
+function xOfT(g, t) { return (t - g.x0) / HOUR_MS * PPH; }
+function tOfX(p, x) { return p.layout.x0 + x / PPH * HOUR_MS; }
+
+// Night intervals (ms) from daily sunrise/sunset, else from hourly is_day runs
+function nightSpans(p, S, x0, x1) {
+  var out = [], ups = p.data.ups, i;
+  if (ups) {
+    var cur = x0;
+    for (i = 0; i < ups.length; i++) {
+      if (ups[i][0] > cur) out.push([cur, Math.min(ups[i][0], x1)]);
+      cur = Math.max(cur, ups[i][1]);
+    }
+    if (cur < x1) out.push([cur, x1]);
+    return out;
+  }
+  var h = p.data.h, start = null, n = Math.min(p.data.n, S.hours);
+  for (i = 0; i < n; i++) {
+    var night = h.is_day[i] === 0;
+    if (night && start == null) start = h.time[i] - HOUR_MS / 2;
+    if (!night && start != null) { out.push([start, h.time[i] - HOUR_MS / 2]); start = null; }
+  }
+  if (start != null) out.push([start, x1]);
+  return out;
+}
+
+function panelY(pn, sc, v) { return pn.top + (sc.hi - v) / (sc.hi - sc.lo) * (pn.bot - pn.top); }
+
+function hGrid(ctx, g, pn, ticks, sc) {
+  ctx.strokeStyle = g.P.grid; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ticks.forEach(function(v) {
+    var y = Math.round(panelY(pn, sc, v)) + 0.5;
+    ctx.moveTo(0, y); ctx.lineTo(g.W, y);
+  });
+  ctx.stroke();
+}
+
+function renderCard(p) {
+  var e = p.el;
+  if (!e || !p.data) return;
+  var P = pal();
+  var S = buildSeries(p);
+  var E = DAYS >= ENS_MIN_DAYS && p.ens ? buildEns(p, S) : null;
+  var sc = computeScales(S, E);
+  var x0 = S.t[0] - 0;     // first stamp is local midnight of the place's today
+  var W = Math.round(S.hours * PPH), H = LAY.total;
+  var g = { p: p, S: S, E: E, sc: sc, P: P, x0: x0, W: W, H: H };
+  p.layout = { x0: x0, W: W, S: S, E: E, sc: sc };
+  p.S = S;
+
+  e.inner.style.width = W + 'px';
+  e.inner.style.height = H + 'px';
+  var ctx = setupCanvas(e.canvas, W, H);
+  var actx = setupCanvas(e.axis, AXIS_W, H);
+  e.canvas.setAttribute('aria-label', 'Meteogram for ' + p.label);
+  e.axis.setAttribute('aria-hidden', 'true');
+
+  var x1 = x0 + S.hours * HOUR_MS;
+  var lx = [], i;
+  for (i = 0; i < S.n; i++) lx.push(xOfT(g, S.t[i] + (S.step - 1) / 2 * HOUR_MS));
+  g.lx = lx;
+
+  // night shading across the full height, then day separators and 6 h grid
+  ctx.fillStyle = P.night;
+  nightSpans(p, S, x0, x1).forEach(function(sp) {
+    var a = xOfT(g, sp[0]), b = xOfT(g, sp[1]);
+    ctx.fillRect(a, TIME_H - 4, b - a, H - TIME_H + 4);
+  });
+  drawTimeAxis(ctx, g);
+
+  PANEL_DEFS.forEach(function(d) {
+    var pn = LAY[d.id];
+    ctx.strokeStyle = P.grid; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, Math.round(pn.bot) + 0.5); ctx.lineTo(W, Math.round(pn.bot) + 0.5); ctx.stroke();
+  });
+  drawIcons(ctx, g);
+  drawTemp(ctx, actx, g);
+  drawHum(ctx, actx, g);
+  drawPrecip(ctx, actx, g);
+  drawFrz(ctx, actx, g);
+  drawCloud(ctx, actx, g);
+  drawWind(ctx, actx, g);
+
+  // pinned axis header: zone abbreviation under the day labels
+  actx.fillStyle = P.muted; actx.font = '10px system-ui'; actx.textAlign = 'right'; actx.textBaseline = 'middle';
+  actx.fillText(zoneAbbr(p, x0 + 12 * HOUR_MS), AXIS_W - 6, 12);
+  actx.fillText('local', AXIS_W - 6, 26);
+
+  buildLegends(p, E);
+  e.inner.style.display = 'block';
+  restoreScroll(p);
+  updateNow(p);
+  updateCursorFor(p);
+}
+
+function drawTimeAxis(ctx, g) {
+  var p = g.p, P = g.P, days = p.data.days, wall = p.data.wall, S = g.S;
+  var maxT = g.x0 + S.hours * HOUR_MS;
+  ctx.font = '10px system-ui'; ctx.textBaseline = 'middle';
+  var tickEvery = PPH * 3 >= 34 ? 3 : 6;
+  // hour ticks: faint full-height lines every 6 h, labels every 6 h (3 h when wide)
+  ctx.lineWidth = 1;
+  for (var i = 0; i < Math.min(wall.length, S.hours); i++) {
+    var w = wall[i];
+    if (w.mi !== 0 || w.h % tickEvery !== 0 || w.h === 0) continue;
+    var x = Math.round(xOfT(g, p.data.time[i])) + 0.5;
+    if (w.h % 6 === 0) {
+      ctx.strokeStyle = P.grid;
+      ctx.beginPath(); ctx.moveTo(x, TIME_H - 4); ctx.lineTo(x, g.H); ctx.stroke();
+    }
+    ctx.fillStyle = P.muted; ctx.textAlign = 'center';
+    ctx.fillText(hourLabel(w.h, true), x, 28);
+  }
+  // day separators and labels
+  for (var d = 0; d < days.length; d++) {
+    var ds = days[d];
+    if (ds.t >= maxT) break;
+    var xs = Math.round(xOfT(g, ds.t)) + 0.5;
+    var nextT = d + 1 < days.length ? Math.min(days[d + 1].t, maxT) : maxT;
+    var xe = xOfT(g, nextT);
+    if (d > 0) {
+      ctx.strokeStyle = P.day; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(xs, 0); ctx.lineTo(xs, g.H); ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = P.text; ctx.font = '600 11px system-ui';
+    ctx.fillText(WD[ds.w.wd] + ' ' + MON[ds.w.mo - 1] + ' ' + ds.w.d, (xs + xe) / 2, 11);
+    ctx.font = '10px system-ui';
+  }
+}
+
+function drawIcons(ctx, g) {
+  var S = g.S, pn = LAY.icons, k = sampleSkip(S, ICON_MIN_PX);
+  var size = Math.min(30, pn.bot - pn.top - 2), cy = (pn.top + pn.bot) / 2;
+  for (var i = 0; i < S.n; i += k) {
+    if (S.code[i] == null) continue;
+    // sample at the center of its slot so icons fall at 3 AM, 9 AM, ... when skipping
+    drawIcon(ctx, S.code[i], S.day[i] !== 0, g.lx[i], cy, size, g.P);
+  }
+}
+
+function drawTemp(ctx, actx, g) {
+  var S = g.S, E = g.E, sc = g.sc.temp, pn = LAY.temp, P = g.P, lx = g.lx, p = g.p;
+  hGrid(ctx, g, pn, sc.ticks, sc);
+  // freezing line
+  var fz = U().temp.u === '°F' ? 32 : 0;
+  if (fz > sc.lo && fz < sc.hi) {
+    ctx.save(); ctx.strokeStyle = P.rain; ctx.globalAlpha = 0.5; ctx.setLineDash([4, 3]);
+    var yf = Math.round(panelY(pn, sc, fz)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(0, yf); ctx.lineTo(g.W, yf); ctx.stroke(); ctx.restore();
+  }
+  function ys(a) { return a.map(function(v) { v = cv('temp', v); return v == null ? null : panelY(pn, sc, v); }); }
+  if (E) fillBand(ctx, lx, ys(E.tLo), ys(E.tHi), alpha(P.temp, 0.2));
+  strokeLine(ctx, lx, ys(S.app), P.app, 1.5, [4, 3]);
+  strokeLine(ctx, lx, ys(S.temp), P.temp, 2);
+  // daily max / min from the hourly series (true extremes, even in 3-hourly view)
+  var h = p.data.h, days = p.data.days, nH = Math.min(S.hours, p.data.n);
+  ctx.font = '600 10px system-ui'; ctx.textAlign = 'center';
+  for (var d = 0; d < days.length; d++) {
+    var a = days[d].i, b = d + 1 < days.length ? days[d + 1].i : p.data.n;
+    if (a >= nH) break;
+    b = Math.min(b, nH);
+    var imax = -1, imin = -1;
+    for (var i = a; i < b; i++) {
+      var v = h.temperature_2m[i];
+      if (v == null) continue;
+      if (imax < 0 || v > h.temperature_2m[imax]) imax = i;
+      if (imin < 0 || v < h.temperature_2m[imin]) imin = i;
+    }
+    if (imax < 0) continue;
+    [[imax, -6, P.temp], [imin, 12, P.hum]].forEach(function(m) {
+      var vv = cv('temp', h.temperature_2m[m[0]]);
+      var x = xOfT(g, h.time[m[0]]), y = panelY(pn, sc, vv);
+      ctx.fillStyle = m[2];
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillText(Math.round(vv) + '°', x, y + m[1]);
+    });
+  }
+  // pinned axis
+  actx.font = '10px system-ui'; actx.textAlign = 'right'; actx.textBaseline = 'middle';
+  actx.fillStyle = P.muted;
+  sc.ticks.forEach(function(v) { actx.fillText(Math.round(v) + '°', AXIS_W - 6, panelY(pn, sc, v)); });
+}
+
+function alpha(hex, a) {
+  var n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+
+function axisText(actx, text, x, y, color, align) {
+  actx.fillStyle = color; actx.textAlign = align || 'right'; actx.textBaseline = 'middle';
+  actx.fillText(text, x, y);
+}
+
+function drawHum(ctx, actx, g) {
+  var S = g.S, pn = LAY.hum, P = g.P, lx = g.lx, hs = g.sc.hum, ds = g.sc.dew;
+  hGrid(ctx, g, pn, [0, 50, 100], hs);
+  function yh(v) { return v == null ? null : panelY(pn, hs, v); }
+  var dewY = S.dew.map(function(v) { v = cv('temp', v); return v == null ? null : panelY(pn, ds, v); });
+  strokeLine(ctx, lx, S.rh.map(yh), P.hum, 2);
+  strokeLine(ctx, lx, dewY, P.dew, 1.5, [4, 3]);
+  actx.font = '10px system-ui';
+  [0, 50, 100].forEach(function(v) { axisText(actx, v + '%', AXIS_W - 6, panelY(pn, hs, v), P.hum); });
+  [0, 1, 2].forEach(function(k) {
+    axisText(actx, Math.round(ds.lo + k * ds.step) + '°', AXIS_W - 36, panelY(pn, ds, ds.lo + k * ds.step), P.dew);
+  });
+}
+
+function drawPrecip(ctx, actx, g) {
+  var S = g.S, E = g.E, sc = g.sc.precip, pn = LAY.precip, P = g.P, p = g.p;
+  hGrid(ctx, g, pn, sc.ticks, sc);
+  var pph = PPH, bw = S.step * pph, gap = bw > 6 ? 1 : 0;
+  var y0 = panelY(pn, sc, 0), i;
+  for (i = 0; i < S.n; i++) {
+    var xa = xOfT(g, S.t[i] - HOUR_MS), xw = bw - gap;
+    if (E && E.pLo[i] != null && E.pHi[i] != null) {
+      var ya = panelY(pn, sc, cv('precip', E.pHi[i])), yb = panelY(pn, sc, cv('precip', E.pLo[i]));
+      ctx.fillStyle = alpha(P.rain, 0.22);
+      ctx.fillRect(xa, ya, xw, Math.max(1, yb - ya));
+    }
+    var r = cv('precip', S.rain[i] || 0), s = cv('precip', S.snowWE[i] || 0);
+    var yr = panelY(pn, sc, r);
+    if (r > 0) { ctx.fillStyle = P.rain; ctx.fillRect(xa, yr, xw, y0 - yr); }
+    if (s > 0) {
+      var ys_ = panelY(pn, sc, r + s);
+      ctx.fillStyle = P.snow; ctx.fillRect(xa, ys_, xw, yr - ys_);
+      ctx.strokeStyle = P.snowEdge; ctx.lineWidth = 1;
+      ctx.strokeRect(xa + 0.5, ys_ + 0.5, Math.max(0, xw - 1), Math.max(0, yr - ys_ - 1));
+    }
+  }
+  // chance of precipitation, 0-100% over the panel height
+  var ps = { lo: 0, hi: 100 };
+  strokeLine(ctx, g.lx, S.prob.map(function(v) { return v == null ? null : panelY(pn, ps, v); }), P.prob, 1.5);
+  actx.font = '10px system-ui';
+  var dp = tickDp(sc.step);
+  sc.ticks.forEach(function(v) { axisText(actx, v.toFixed(dp), AXIS_W - 6, panelY(pn, sc, v), P.muted); });
+  [0, 50, 100].forEach(function(v) { axisText(actx, v + '%', AXIS_W - 36, panelY(pn, ps, v), P.prob); });
+  axisText(actx, U().precip.u, AXIS_W - 6, pn.top - 8, P.muted);
+}
+
+function drawFrz(ctx, actx, g) {
+  var S = g.S, sc = g.sc.frz, pn = LAY.frz, P = g.P;
+  hGrid(ctx, g, pn, sc.ticks, sc);
+  // 0 is bold when the scale reaches below sea level
+  strokeLine(ctx, g.lx, S.frz.map(function(v) { v = cv('height', v); return v == null ? null : panelY(pn, sc, v); }), P.frz, 2);
+  actx.font = '10px system-ui';
+  sc.ticks.forEach(function(v) { axisText(actx, Math.round(v).toLocaleString(), AXIS_W - 6, panelY(pn, sc, v), P.muted); });
+  axisText(actx, U().height.u, AXIS_W - 6, pn.top - 8, P.muted);
+}
+
+function drawCloud(ctx, actx, g) {
+  var S = g.S, pn = LAY.cloud, P = g.P, bw = S.step * PPH, i;
+  var rows = [['ch', 'High'], ['cm', 'Mid'], ['cl', 'Low']], rh = 20, rgap = 3;
+  rows.forEach(function(r, k) {
+    var y = pn.top + k * (rh + rgap);
+    ctx.strokeStyle = P.grid; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, y + 0.5, g.W - 1, rh - 1);
+    for (i = 0; i < S.n; i++) {
+      var v = S[r[0]][i];
+      if (v == null) continue;
+      var xc = g.lx[i];
+      ctx.fillStyle = alpha(P.cloud, clamp(v / 100, 0, 1) * 0.85);
+      ctx.fillRect(xc - bw / 2, y + 1, bw + 0.5, rh - 2);
+    }
+    axisText(actx, r[1], AXIS_W - 6, y + rh / 2, P.muted);
+  });
+  // sunshine: fraction of each bin with direct sun
+  var sy0 = pn.top + 3 * (rh + rgap) + 2, sy1 = pn.bot;
+  ctx.strokeStyle = P.grid; ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, sy0 + 0.5, g.W - 1, sy1 - sy0 - 1);
+  ctx.fillStyle = alpha(P.sun, 0.85);
+  for (i = 0; i < S.n; i++) {
+    if (S.sun[i] == null) continue;
+    var frac = clamp(S.sun[i] / (3600 * S.step), 0, 1);
+    var bh = (sy1 - sy0 - 2) * frac;
+    var xa = xOfT(g, S.t[i] - HOUR_MS);
+    ctx.fillRect(xa, sy1 - 1 - bh, bw - (bw > 6 ? 1 : 0), bh);
+  }
+  axisText(actx, 'Sun', AXIS_W - 6, (sy0 + sy1) / 2, P.sun);
+}
+
+function drawWind(ctx, actx, g) {
+  var S = g.S, sc = g.sc.wind, P = g.P, base = LAY.wind;
+  var pn = { top: base.top, bot: base.bot - 26 };   // bottom 26 px: direction arrows
+  hGrid(ctx, g, pn, sc.ticks, sc);
+  function ys(a) { return a.map(function(v) { v = cv('wind', v); return v == null ? null : panelY(pn, sc, v); }); }
+  strokeLine(ctx, g.lx, ys(S.ws), P.wind, 2);
+  var k = sampleSkip(S, ARROW_MIN_PX), cy = base.bot - 12, i;
+  ctx.strokeStyle = P.muted; ctx.fillStyle = P.muted; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+  for (i = 0; i < S.n; i += k) {
+    if (S.dir[i] == null) continue;
+    // meteorological direction is where the wind comes FROM; the arrow points downwind
+    var a = (S.dir[i] + 180) * Math.PI / 180, ux = Math.sin(a), uy = -Math.cos(a), x = g.lx[i];
+    var L = 8;
+    ctx.beginPath();
+    ctx.moveTo(x - ux * L, cy - uy * L); ctx.lineTo(x + ux * L, cy + uy * L);
+    ctx.moveTo(x + ux * L, cy + uy * L); ctx.lineTo(x + ux * L - ux * 5 + uy * 3.5, cy + uy * L - uy * 5 - ux * 3.5);
+    ctx.moveTo(x + ux * L, cy + uy * L); ctx.lineTo(x + ux * L - ux * 5 - uy * 3.5, cy + uy * L - uy * 5 + ux * 3.5);
+    ctx.stroke();
+  }
+  actx.font = '10px system-ui';
+  sc.ticks.forEach(function(v) { axisText(actx, Math.round(v), AXIS_W - 6, panelY(pn, sc, v), P.muted); });
+  axisText(actx, U().wind.u, AXIS_W - 6, base.top - 8, P.muted);
+}
+
+// ── Legends and crosshair readout ──────────────────────────────────────────
+function buildLegends(p, E) {
+  var e = p.el, P = pal(), html = '';
+  p.vals = {};
+  PANEL_DEFS.forEach(function(d) {
+    var pn = LAY[d.id], items = LEGENDS[d.id].map(function(it) {
+      var sw = it[2] ? '<i class="' + (it[3] || '') + '" style="background:' + P[it[2]] + '"></i>' : '';
+      return sw + (it[1] ? esc(it[1]) + ' ' : '') + '<b data-k="' + it[0] + '"></b>';
+    });
+    if (E && d.id === 'temp') items.push('<i class="box" style="background:' + alpha(P.temp, 0.5) + '"></i>10–90% ensemble');
+    if (E && d.id === 'precip') items.push('<i class="box" style="background:' + alpha(P.rain, 0.4) + '"></i>10–90% ensemble');
+    html += '<div class="leg" style="top:' + pn.y + 'px">' + items.join(' ') + '</div>';
+  });
+  e.legs.innerHTML = html;
+  var bs = e.legs.querySelectorAll('b[data-k]');
+  for (var i = 0; i < bs.length; i++) p.vals[bs[i].getAttribute('data-k')] = bs[i];
+}
+
+function readout(p, i) {
+  var S = p.S, u = U(), r = {};
+  var t = function(v) { return v == null ? '–' : fv(cv('temp', v), 0) + u.temp.u; };
+  var pc = function(v) { return v == null ? '–' : Math.round(v) + '%'; };
+  var w = WMO[S.code[i]];
+  r.wx = w ? w[0] : (S.code[i] == null ? '–' : 'Code ' + S.code[i]);
+  r.temp = t(S.temp[i]); r.app = t(S.app[i]);
+  r.rh = pc(S.rh[i]); r.dew = t(S.dew[i]);
+  r.rain = S.rain[i] == null ? '–' : fv(cv('precip', S.rain[i]), u.precip.dp) + ' ' + u.precip.u;
+  r.snow = S.snowCm[i] == null ? '–' : fv(cv('snow', S.snowCm[i]), u.snow.dp) + ' ' + u.snow.u;
+  r.prob = pc(S.prob[i]);
+  r.frz = S.frz[i] == null ? '–' : Math.round(cv('height', S.frz[i])).toLocaleString() + ' ' + u.height.u;
+  r.ch = pc(S.ch[i]); r.cm = pc(S.cm[i]); r.cl = pc(S.cl[i]);
+  r.sun = S.sun[i] == null ? '–' : Math.round(S.sun[i] / 60) + ' of ' + (60 * S.step) + ' min';
+  r.ws = S.ws[i] == null ? '–' : Math.round(cv('wind', S.ws[i])) + ' ' + u.wind.u;
+  r.dir = S.dir[i] == null ? '–' : COMPASS[Math.round(S.dir[i] / 22.5) % 16] + ' ' + Math.round(S.dir[i]) + '°';
+  return r;
+}
+
+function updateCursorFor(p) {
+  var e = p.el, L = p.layout;
+  if (!L) return;
+  var inRange = cursorT != null && cursorT >= L.x0 && cursorT <= L.x0 + L.S.hours * HOUR_MS;
+  var k;
+  if (!inRange) {
+    e.curline.style.display = 'none';
+    e.curtag.style.display = 'none';
+    e.ctime.textContent = '';
+    for (k in p.vals) p.vals[k].textContent = '';
+    return;
+  }
+  var S = L.S, x = (cursorT - L.x0) / HOUR_MS * PPH;
+  var i = clamp(Math.round((cursorT - S.t[0] - (S.step - 1) / 2 * HOUR_MS) / (S.step * HOUR_MS)), 0, S.n - 1);
+  var w = zparts(p, cursorT);
+  var label = WD[w.wd] + ' ' + clockLabel(w);
+  e.curline.style.display = 'block';
+  e.curline.style.left = Math.round(x) + 'px';
+  e.curtag.style.display = 'block';
+  e.curtag.textContent = label;
+  e.curtag.style.left = Math.round(x) + 'px';
+  e.curtag.style.transform = x < 45 ? 'none' : (x > L.W - 45 ? 'translateX(-100%)' : 'translateX(-50%)');
+  e.ctime.textContent = WD[w.wd] + ' ' + MON[w.mo - 1] + ' ' + w.d + ', ' + clockLabel(w) + ' ' + zoneAbbr(p, cursorT);
+  var r = readout(p, i);
+  for (k in p.vals) p.vals[k].textContent = r[k];
+}
+
+function updateCursor() { PLACES.forEach(updateCursorFor); }
+
+function updateNow(p) {
+  var L = p.layout;
+  if (!L) return;
+  var x = (Date.now() - L.x0) / HOUR_MS * PPH;
+  if (x < 0 || x > L.W) { p.el.nowline.style.display = 'none'; return; }
+  p.el.nowline.style.display = 'block';
+  p.el.nowline.style.left = Math.round(x) + 'px';
+}
+
+// ── Scrolling: all cards stay on the same instant ──────────────────────────
+function timeToScroll(p, t) {
+  return Math.round(clamp((t - p.layout.x0) / HOUR_MS * PPH, 0, Math.max(0, p.layout.W - p.el.scroller.clientWidth)));
+}
+
+function setScroll(p, x) {
+  var sc = p.el.scroller;
+  if (Math.abs(sc.scrollLeft - x) < 1) return;
+  p.expect = x;
+  sc.scrollLeft = x;
+}
+
+function restoreScroll(p) {
+  setScroll(p, viewT == null ? 0 : timeToScroll(p, viewT));
+}
+
+function onScroll(p) {
+  var sc = p.el.scroller;
+  if (p.expect != null && Math.abs(sc.scrollLeft - p.expect) < 1.5) { p.expect = null; return; }
+  p.expect = null;
+  if (!p.layout) return;
+  viewT = p.layout.x0 + sc.scrollLeft / PPH * HOUR_MS;
+  PLACES.forEach(function(q) {
+    if (q !== p && q.layout) setScroll(q, timeToScroll(q, viewT));
+  });
+}
+
+// ── Pointer interaction: crosshair (mouse hover, touch tap) ────────────────
+function pointerT(p, ev) {
+  var r = p.el.scroller.getBoundingClientRect();
+  return p.layout.x0 + (ev.clientX - r.left + p.el.scroller.scrollLeft) / PPH * HOUR_MS;
+}
+
+function onPointer(p, ev) {
+  if (!p.layout) return;
+  cursorT = pointerT(p, ev);
+  updateCursor();
+}
+
+document.addEventListener('pointerdown', function(ev) {
+  if (cursorT != null && ev.pointerType !== 'mouse' && !(ev.target.closest && ev.target.closest('.scroller'))) {
+    cursorT = null;
+    updateCursor();
+  }
+});
+
+// ── Drag to reorder ────────────────────────────────────────────────────────
+var drag = null;
+function startDrag(ev, p) {
+  ev.preventDefault();
+  ev.currentTarget.setPointerCapture(ev.pointerId);
+  drag = { p: p, y: ev.clientY, target: null, after: false, timer: null };
+  p.el.root.classList.add('dragging');
+  drag.timer = setInterval(function() {
+    if (!drag) return;
+    if (drag.y < 70) window.scrollBy(0, -18);
+    else if (drag.y > window.innerHeight - 70) window.scrollBy(0, 18);
+  }, 30);
+}
+
+function moveDrag(ev) {
+  if (!drag) return;
+  drag.y = ev.clientY;
+  var best = null, after = false;
+  PLACES.forEach(function(q) {
+    var r = q.el.root.getBoundingClientRect();
+    q.el.root.classList.remove('drop-before', 'drop-after');
+    if (q !== drag.p && ev.clientY >= r.top && ev.clientY < r.bottom) {
+      best = q;
+      after = ev.clientY > r.top + r.height / 2;
+    }
+  });
+  drag.target = best; drag.after = after;
+  if (best) best.el.root.classList.add(after ? 'drop-after' : 'drop-before');
+}
+
+function endDrag() {
+  if (!drag) return;
+  var d = drag;
+  drag = null;
+  clearInterval(d.timer);
+  PLACES.forEach(function(q) { q.el.root.classList.remove('dragging', 'drop-before', 'drop-after'); });
+  if (!d.target) return;
+  PLACES = PLACES.filter(function(q) { return q !== d.p; });
+  var at = PLACES.indexOf(d.target) + (d.after ? 1 : 0);
+  PLACES.splice(at, 0, d.p);
+  var c = document.getElementById('cards');
+  PLACES.forEach(function(q) { c.appendChild(q.el.root); });
+  savePlaces();
+  // DOM moves can reset scroll positions; put every card back on the shared instant
+  PLACES.forEach(restoreScroll);
+}
+
+// ── Card DOM ───────────────────────────────────────────────────────────────
+function buildCard(p) {
+  var root = document.createElement('div');
+  root.className = 'card';
+  root.innerHTML =
+    '<div class="card-hdr">' +
+      '<button type="button" class="grip" title="Drag to reorder" aria-label="Drag to reorder">&#8942;&#8942;</button>' +
+      '<div class="cinfo"><div class="cname"></div><div class="cmeta"></div></div>' +
+      '<div class="ctime"></div>' +
+      '<button type="button" class="rm" title="Remove" aria-label="Remove">&times;</button>' +
+    '</div>' +
+    '<div class="cerr" hidden><span class="msg"></span><button type="button" class="retry">Retry</button></div>' +
+    '<div class="cload">Loading…</div>' +
+    '<div class="cbody" hidden>' +
+      '<canvas class="axis" role="presentation"></canvas>' +
+      '<div class="scroller"><div class="sc-inner">' +
+        '<canvas role="img"></canvas><div class="nowline"></div><div class="curline"></div><div class="curtag"></div>' +
+      '</div></div>' +
+      '<div class="legs" style="left:' + AXIS_W + 'px"></div>' +
+    '</div>';
+  var q = function(s) { return root.querySelector(s); };
+  p.el = {
+    root: root, name: q('.cname'), meta: q('.cmeta'), ctime: q('.ctime'), err: q('.cerr'), msg: q('.msg'),
+    load: q('.cload'), body: q('.cbody'), axis: q('.axis'), scroller: q('.scroller'), inner: q('.sc-inner'),
+    canvas: q('.sc-inner canvas'), nowline: q('.nowline'), curline: q('.curline'), curtag: q('.curtag'), legs: q('.legs')
+  };
+  p.vals = {};
+  p.el.name.textContent = p.label;
+  p.el.name.title = p.label;
+  q('.rm').addEventListener('click', function() { removePlace(p); });
+  q('.retry').addEventListener('click', function() { loadPlace(p); });
+  var grip = q('.grip');
+  grip.addEventListener('pointerdown', function(ev) { startDrag(ev, p); });
+  grip.addEventListener('pointermove', moveDrag);
+  grip.addEventListener('pointerup', endDrag);
+  grip.addEventListener('pointercancel', endDrag);
+  var sc = p.el.scroller;
+  sc.addEventListener('scroll', function() { onScroll(p); });
+  sc.addEventListener('pointermove', function(ev) { onPointer(p, ev); });
+  sc.addEventListener('pointerdown', function(ev) { if (ev.pointerType !== 'mouse') onPointer(p, ev); });
+  sc.addEventListener('pointerleave', function(ev) {
+    if (ev.pointerType === 'mouse') { cursorT = null; updateCursor(); }
+  });
+  showEmpty();
+  renderCardState(p);
+  return root;
+}
+
+function fmtCoord(lat, lon) {
+  return Math.abs(lat).toFixed(2) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' +
+         Math.abs(lon).toFixed(2) + '°' + (lon >= 0 ? 'E' : 'W');
+}
+
+// Header, error banner and loading text for the card's current status
+function renderCardState(p) {
+  var e = p.el;
+  if (!e) return;
+  var bits = [fmtCoord(p.lat, p.lon)];
+  if (p.data) {
+    if (p.data.elev != null) bits.push(Math.round(cv('height', p.data.elev)).toLocaleString() + ' ' + U().height.u);
+    if (p.data.zone.tz) bits.push(p.data.zone.tz.replace(/_/g, ' '));
+  }
+  if (p.fetchedAt) { var d = new Date(p.fetchedAt); bits.push('updated ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes())); }
+  if (p.data && DAYS >= ENS_MIN_DAYS && p.ensStatus === 'error') bits.push('ensemble unavailable');
+  e.meta.textContent = bits.join(' · ');
+  var failed = !!p.err && p.seq && p.attemptAt && !(p.fetchedAt >= p.attemptAt);
+  e.err.hidden = !failed;
+  e.msg.textContent = failed ? (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + p.err : '';
+  e.load.hidden = !(p.status === 'loading' && !p.data);
+  e.body.hidden = !p.data;
+}
+
+function renderAll() {
+  computePph();
+  PLACES.forEach(function(p) { renderCardState(p); renderCard(p); });
+}
+
+function computePph() {
+  var w = document.getElementById('cards').clientWidth - 32 - AXIS_W;
+  PPH = Math.max(MIN_PX_PER_HOUR, w / (DAYS * 24));
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+function syncSegs() {
+  var rs = document.getElementById('rangeSeg').children, i;
+  for (i = 0; i < rs.length; i++) rs[i].setAttribute('aria-pressed', String(+rs[i].getAttribute('data-days') === DAYS));
+  var us = document.getElementById('unitSeg').children;
+  for (i = 0; i < us.length; i++) us[i].setAttribute('aria-pressed', String(us[i].getAttribute('data-units') === UNIT));
+}
+
+function setDays(n) {
+  if (n === DAYS) return;
+  DAYS = n;
+  viewT = null;
+  syncSegs();
+  renderAll();
+  if (DAYS >= ENS_MIN_DAYS) {
+    PLACES.forEach(function(p) {
+      if (p.status === 'ok' && !p.ens && p.ensStatus !== 'loading' && p.ensStatus !== 'error') loadEnsemble(p);
+    });
+  }
+}
+
+function setUnits(u) {
+  if (!UNITS[u] || u === UNIT) return;
+  UNIT = u;
+  saveUnits();
+  syncSegs();
+  renderAll();
+}
+
+(function() {
+  var seg = document.getElementById('rangeSeg');
+  RANGES.forEach(function(d) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-days', d);
+    b.textContent = d;
+    seg.appendChild(b);
+  });
+  seg.addEventListener('click', function(e) {
+    var b = e.target.closest ? e.target.closest('button[data-days]') : null;
+    if (b) setDays(+b.getAttribute('data-days'));
+  });
+  document.getElementById('unitSeg').addEventListener('click', function(e) {
+    var b = e.target.closest ? e.target.closest('button[data-units]') : null;
+    if (b) setUnits(b.getAttribute('data-units'));
+  });
+})();
+
+// ── Page lifecycle ─────────────────────────────────────────────────────────
+var lastW = window.innerWidth, resizeTimer = null;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() {
+    // phone browsers fire resize as the URL bar hides; only a width change needs a redraw
+    if (window.innerWidth === lastW) return;
+    lastW = window.innerWidth;
+    renderAll();
+  }, 150);
+});
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState !== 'visible') return;
+  if (applyTheme()) renderAll();
+  refreshStale();
+});
+
+// Every minute: move the "now" line, follow the theme schedule, reload stale data
+setInterval(function() {
+  if (document.visibilityState !== 'visible') return;
+  if (applyTheme()) renderAll();
+  PLACES.forEach(updateNow);
+  refreshStale();
+}, 60000);
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(function() {
+  UNIT = loadSavedUnits() || 'imperial';
+  var list = loadSavedPlaces();
+  if (!list.length) list = [validPlace(DEFAULT_PLACE.lat, DEFAULT_PLACE.lon, DEFAULT_PLACE.label)];
+  syncSegs();
+  computePph();
+  var c = document.getElementById('cards');
+  list.forEach(function(loc) {
+    var p = makePlace(loc);
+    PLACES.push(p);
+    c.appendChild(buildCard(p));
+  });
+  computePph();
+  PLACES.forEach(function(p) { loadPlace(p); });
+})();
+</script>
+</body>
+</html>
