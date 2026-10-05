@@ -9,11 +9,14 @@
     --bg:#0d1117; --surface:#161b22; --border:#21262d;
     --accent:#58a6ff; --green:#3fb950; --muted:#8b949e;
     --text:#e6edf3; --danger:#f85149; --warn:#d29922;
+    --accent-rgb:88,166,255; --rain-rgb:56,139,253; --snow-rgb:150,225,245; --amber-rgb:210,153,34; --red-rgb:248,81,73;
+    --namew:176px; --cellw:96px; --cols:7; --gw:100vw;
   }
   html.light {
     --bg:#f6f8fa; --surface:#ffffff; --border:#d0d7de;
     --accent:#0969da; --green:#1a7f37; --muted:#636c76;
     --text:#1f2328; --danger:#cf222e; --warn:#9a6700;
+    --accent-rgb:9,105,218; --rain-rgb:9,105,218; --snow-rgb:6,182,212; --amber-rgb:191,135,0; --red-rgb:207,34,46;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   [hidden]{display:none!important}
@@ -44,12 +47,70 @@
   .upd{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
   .status{padding:4px 20px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);min-height:20px}
   .status.err{color:var(--danger)}
+  .vbar .grp{flex-wrap:wrap}
+  .chips{display:inline-flex;gap:4px;flex-wrap:wrap}
+  .chip,.tog{border-radius:12px;padding:3px 10px}
+  .tog{border-radius:4px}
+  .chip[aria-pressed=true],.tog[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
+  html.light .chip[aria-pressed=true],html.light .tog[aria-pressed=true]{color:#fff}
+  .vhint{font-size:10px;color:var(--muted);flex:1 1 220px;min-width:0}
+  .vhint b{color:var(--text);font-weight:600}
+  .gridwrap{overflow-x:auto;overflow-y:hidden;background:var(--surface)}
+  .gin{width:100%;min-width:calc(var(--namew) + var(--cols) * var(--cellw))}
+  .ghead,.grow{display:grid;grid-template-columns:var(--namew) repeat(var(--cols),minmax(0,1fr))}
+  .ghead{border-bottom:1px solid var(--border);background:var(--surface)}
+  .gcorner,.gname{position:sticky;left:0;z-index:3;background:var(--surface);box-shadow:1px 0 0 var(--border)}
+  .gcorner{padding:8px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:flex-end}
+  .hd{border:none;border-left:1px solid var(--border);border-radius:0;padding:6px 2px;text-align:center;display:flex;flex-direction:column;gap:1px;font-size:10px;color:var(--muted)}
+  .hd b{font-size:12px;color:var(--text)}
+  .hd:hover{background:rgba(var(--accent-rgb),.1)}
+  .hd[aria-pressed=true]{background:rgba(var(--accent-rgb),.22);box-shadow:inset 0 -2px 0 var(--accent)}
+  .hd:focus-visible,.cnb:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   .cards{display:flex;flex-direction:column;gap:1px;background:var(--border)}
+  .prow{background:var(--surface);min-width:0;position:relative}
+  .prow.dragging{opacity:.55}
+  .prow.drop-before::before,.prow.drop-after::after{content:"";position:absolute;left:0;right:0;height:3px;background:var(--accent);z-index:5}
+  .prow.drop-before::before{top:-2px}
+  .prow.drop-after::after{bottom:-2px}
+  .grow{cursor:pointer}
+  .gname{padding:7px 8px 7px 6px;min-width:0}
+  .gn1{display:flex;align-items:flex-start;gap:2px}
+  .gn1 .grip{font-size:14px;padding:1px 2px 1px 0}
+  .gn1 .grip.off{opacity:.3;cursor:not-allowed}
+  .rank{font-size:10px;font-weight:700;color:var(--accent);padding-top:2px;margin-right:3px;font-variant-numeric:tabular-nums}
+  .cnb{flex:1 1 auto;min-width:0;border:none;background:none;padding:0;text-align:left;font-size:12.5px;font-weight:600;line-height:1.25;color:var(--text);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+  .cnb::before{content:"\25B8\00a0";color:var(--muted)}
+  .cnb[aria-expanded=true]::before{content:"\25BE\00a0"}
+  .gn1 .rm{font-size:16px;padding:0 3px}
+  .tags{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+  .tag{font-size:9px;line-height:14px;padding:1px 6px;border-radius:9px;color:var(--muted)}
+  .tag[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
+  html.light .tag[aria-pressed=true]{color:#fff}
+  .gstale{font-size:10px;color:var(--danger);margin-top:4px}
+  .gstale button{font-size:10px;padding:0 6px}
+  .gcells{display:contents}
+  .gc{border-left:1px solid var(--border);padding:6px 4px 6px 5px;min-width:0;position:relative}
+  .gc.tcol{background:rgba(var(--accent-rgb),.1)}
+  .gdate{position:absolute;top:2px;right:3px;font-size:8px;color:var(--muted);font-style:italic}
+  .gtop{display:flex;align-items:center;gap:5px}
+  .gtop canvas{flex:none;display:block}
+  .temps{display:flex;flex-direction:column;gap:1px;align-items:flex-start}
+  .tt{display:inline-block;padding:0 4px;border-radius:3px;font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
+  .tt.hi{font-weight:700}
+  .ln{font-size:10px;line-height:14px;padding:0 3px;border-radius:3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  .ln.z{color:var(--muted)}
+  .ln em{font-style:normal;color:var(--muted);margin-right:3px}
+  .ln.w2{font-weight:700}
+  .pbar{display:flex;height:3px;margin:1px 3px 0;border-radius:2px;overflow:hidden;background:rgba(139,148,158,.18)}
+  .pbar i{display:block;height:100%}
+  .gmsg{grid-column:2 / -1;position:sticky;left:var(--namew);padding:12px 10px;font-size:11px;color:var(--muted);align-self:center;
+    width:calc(var(--gw) - var(--namew));max-width:100%}
+  .gmsg.bad{color:var(--danger)}
+  .gmsg button{margin-left:8px}
+  .ghd{position:sticky;left:0;width:var(--gw);background:var(--bg);padding:5px 10px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .gdetail{position:sticky;left:0;width:var(--gw);border-top:1px solid var(--border)}
   .card{background:var(--surface);padding:12px 16px 10px;min-width:0;position:relative}
-  .card.dragging{opacity:.55}
-  .card.drop-before::before,.card.drop-after::after{content:"";position:absolute;left:0;right:0;height:3px;background:var(--accent);z-index:5}
-  .card.drop-before::before{top:-2px}
-  .card.drop-after::after{bottom:-2px}
   .card-hdr{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
   .grip{cursor:grab;touch-action:none;color:var(--muted);padding:2px 6px 2px 0;font-size:16px;line-height:1.2;user-select:none;-webkit-user-select:none;background:none;border:none}
   .grip:active{cursor:grabbing}
@@ -89,9 +150,16 @@
     #locInput{flex-basis:100%}
     #addBtn{flex:1}
     .seg button{min-height:34px;padding:4px 10px}
+    .controls select{font-size:16px;min-height:40px}
+    .vbar .chip,.vbar .tog{min-height:34px;font-size:12px}
+    .gridwrap{margin:0 16px;border:1px solid var(--border)}
+    :root{--namew:120px}
     .card{padding:12px 16px 8px}
     .rm{min-height:0;font-size:20px}
     .grip{min-height:0;font-size:20px}
+    .gn1 .rm{font-size:18px}
+    .gn1 .grip{font-size:16px}
+    .tag{line-height:16px;padding:2px 7px}
   }
 </style>
 </head>
@@ -126,12 +194,40 @@
   </div>
 </div>
 
+<div class="controls vbar" id="vbar">
+  <div class="grp">
+    <label>Activity</label>
+    <div class="chips" id="filterChips" role="group" aria-label="Show only places with these activity tags"></div>
+  </div>
+  <div class="grp">
+    <button type="button" class="tog" id="groupBtn" aria-pressed="false" title="Group rows under each place's first activity tag">Group by tag</button>
+  </div>
+  <div class="grp">
+    <label for="sortSel">Rank by</label>
+    <select id="sortSel" aria-label="Ranking metric"></select>
+    <button type="button" class="tog" id="spanBtn" aria-pressed="false" title="Next day heading you tap extends the selection (same as shift-click)">Span</button>
+    <button type="button" id="clearBtn" hidden>Clear ranking</button>
+  </div>
+  <div class="vhint" id="rankInfo"></div>
+</div>
+
 <div class="status" id="status"></div>
 
-<div class="cards" id="cards"></div>
+<div class="gridwrap" id="grid">
+  <div class="gin">
+    <div class="ghead" id="ghead"></div>
+    <div class="cards" id="cards"></div>
+  </div>
+</div>
 
 <div class="note">
-  Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
+  The overview shows each place&rsquo;s local calendar days, starting with its today (a small italic date in a cell means
+  that place&rsquo;s day differs from the column heading, which follows the first place). Cells show the daytime weather icon,
+  high and low, total precipitation as liquid-water equivalent with the highest chance and a rain/snow bar, peak 10&nbsp;m wind with its
+  prevailing direction (amber above 15&nbsp;mph / 25&nbsp;km/h, red above 25&nbsp;mph / 40&nbsp;km/h), new snow depth and the mean freezing level in daylight.
+  Click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
+  total precipitation and snow, and the highest wind or high. Clicking a row opens its full meteogram.
+  Grouping files a place under its first activity tag. Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
   (Open-Meteo assumes about 0.7&nbsp;cm of snow per mm of water). Beyond 7 days the data are shown as 3-hour
   values (precipitation summed, precipitation probability at its maximum, other variables averaged).
   At 14 and 16 days the shaded bands are the 10th&ndash;90th percentile spread of the 31-member NOAA GEFS ensemble.
@@ -160,6 +256,7 @@ applyTheme();
 var MAX_PLACES = 30;
 var PLACES_KEY = 'meteogram.places';
 var UNITS_KEY = 'meteogram.units';
+var PREFS_KEY = 'meteogram.prefs';   // overview view settings: sort metric, tag filter, grouping
 var DEFAULT_PLACE = { lat: 40.7608, lon: -111.8910, label: 'Salt Lake City, UT' };
 var RANGES = [3, 5, 7, 14, 16];
 var DEFAULT_DAYS = 7;
@@ -171,6 +268,13 @@ var ENS_MODEL = 'gfs_seamless'; // NOAA GEFS: 31 members, full 16 days, hourly, 
 var ENS_LO = 0.10, ENS_HI = 0.90, ENS_MIN_MEMBERS = 5;
 var SNOW_CM_PER_MM = 0.7;       // Open-Meteo: 1 mm water -> 0.7 cm snow (checked against live responses)
 var HOUR_MS = 36e5, DAY_MS = 864e5;
+var MAX_CONCURRENT = 5;         // simultaneous Open-Meteo requests while the grid loads
+var TAGS = ['Climb', 'Ski', 'Run', 'Bike'];   // fixed activity tags; order = grouping priority
+var PRECIP_CODE_HOURS = 3;      // daytime hours with a precipitating code before the day icon shows precipitation
+var PRECIP_FULL_MM = 15;        // daily liquid-water equivalent that gives the darkest precipitation shade / full bar
+var SNOW_FULL_CM = 30;          // daily new snow that gives the darkest snow shade
+var TEMP_TINT_C = [-20, 35];    // daily temperatures mapped from blue to red
+var SORTS = [['dry', 'Driest'], ['calm', 'Calmest'], ['warm', 'Warmest'], ['cool', 'Coolest'], ['snow', 'Most new snow']];
 var REFRESH_MS = 36e5;          // data older than this is reloaded while the tab is visible
 var AXIS_W = 62;                // pinned y-axis column, px
 var MIN_PX_PER_HOUR = 5;        // narrowest readable chart: 120 px per day
@@ -187,7 +291,7 @@ var HOURLY_VARS = ['temperature_2m', 'apparent_temperature', 'relative_humidity_
 var UNITS = {
   imperial: {
     temp:   { f: function(c) { return c * 9 / 5 + 32; }, u: '°F' },
-    wind:   { f: function(k) { return k * 0.621371; }, u: 'mph' },
+    wind:   { f: function(k) { return k * 0.621371; }, u: 'mph', warn: 15, high: 25 },
     precip: { f: function(m) { return m / 25.4; }, u: 'in', dp: 2, min: 0.1 },
     snow:   { f: function(c) { return c / 2.54; }, u: 'in', dp: 1 },
     height: { f: function(m) { return m * 3.28084; }, u: 'ft' },
@@ -195,7 +299,7 @@ var UNITS = {
   },
   metric: {
     temp:   { f: function(c) { return c; }, u: '°C' },
-    wind:   { f: function(k) { return k; }, u: 'km/h' },
+    wind:   { f: function(k) { return k; }, u: 'km/h', warn: 25, high: 40 },
     precip: { f: function(m) { return m; }, u: 'mm', dp: 1, min: 2 },
     snow:   { f: function(c) { return c; }, u: 'cm', dp: 1 },
     height: { f: function(m) { return m; }, u: 'm' },
@@ -279,6 +383,12 @@ var cursorT = null;       // hovered instant (ms since epoch), shared by all car
 var viewT = null;         // instant at the left edge of the last-scrolled card
 var searchSeq = 0;
 var pending = 0;
+var SORT = 'dry';         // ranking metric
+var TAGFILTER = [];       // selected activity tags (empty = show all places)
+var GROUP = false;        // group rows under each place's first tag
+var TARGET = null;        // ranked day columns {a, b, anchor} (indices into the shown days), null = saved order
+var SPAN_MODE = false;    // touch substitute for shift-click: next heading tapped extends the span
+var groupEls = [];        // current group heading elements
 
 function U() { return UNITS[UNIT]; }
 function cv(kind, v) { return v == null ? null : U()[kind].f(v); }
@@ -446,17 +556,37 @@ function loadSavedPlaces() {
   try {
     var a = JSON.parse(localStorage.getItem(PLACES_KEY));
     if (!Array.isArray(a)) return [];
-    return a.map(function(o) { return o && validPlace(o.lat, o.lon, o.label); })
-            .filter(Boolean).slice(0, MAX_PLACES);
+    return a.map(function(o) {
+      var v = o && validPlace(o.lat, o.lon, o.label);
+      if (v) v.tags = cleanTags(o.tags);   // lists saved before tags existed simply have none
+      return v;
+    }).filter(Boolean).slice(0, MAX_PLACES);
   } catch (e) { return []; }
+}
+
+function cleanTags(t) {
+  return Array.isArray(t) ? TAGS.filter(function(x) { return t.indexOf(x) >= 0; }) : [];
 }
 
 function savePlaces() {
   try {
     localStorage.setItem(PLACES_KEY, JSON.stringify(PLACES.map(function(p) {
-      return { lat: p.lat, lon: p.lon, label: p.label };
+      return { lat: p.lat, lon: p.lon, label: p.label, tags: p.tags };
     })));
   } catch (e) {}
+}
+
+function loadPrefs() {
+  try {
+    var o = JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    if (SORTS.some(function(x) { return x[0] === o.sort; })) SORT = o.sort;
+    TAGFILTER = cleanTags(o.tags);
+    GROUP = o.group === true;
+  } catch (e) {}
+}
+
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP })); } catch (e) {}
 }
 
 function loadSavedUnits() {
@@ -483,6 +613,7 @@ function addPlace(loc) {
   PLACES.push(p);
   savePlaces();
   document.getElementById('cards').appendChild(buildCard(p));
+  applyOrder();
   loadPlace(p);
   return true;
 }
@@ -493,28 +624,34 @@ function removePlace(p) {
   if (p.el && p.el.root.parentNode) p.el.root.parentNode.removeChild(p.el.root);
   savePlaces();
   setStatus('');
-  showEmpty();
+  renderHeader();
+  applyOrder();
   updateStamp();
 }
 
 function makePlace(loc) {
   return { lat: loc.lat, lon: loc.lon, label: loc.label, status: 'loading', err: '', ensStatus: 'idle',
-           data: null, ens: null, fetchedAt: 0, attemptAt: 0, seq: 0, ensSeq: 0, el: null, layout: null };
+           data: null, ens: null, fetchedAt: 0, attemptAt: 0, seq: 0, ensSeq: 0, el: null, layout: null,
+           tags: loc.tags ? loc.tags.slice() : [], open: false, rank: null };
 }
 
-function showEmpty() {
+// Placeholder lines under the rows: no places at all, or none matching the tag filter
+function showEmpty(nVisible) {
   var c = document.getElementById('cards');
-  var e = document.getElementById('emptyMsg');
-  if (!PLACES.length && !e) {
-    e = document.createElement('div');
-    e.id = 'emptyMsg';
-    e.className = 'empty';
-    e.style.background = 'var(--surface)';
-    e.textContent = 'No places yet. Add a zip code, place name, or lat, lon above.';
-    c.appendChild(e);
-  } else if (PLACES.length && e) {
-    e.parentNode.removeChild(e);
-  }
+  [['emptyMsg', !PLACES.length, 'No places yet. Add a zip code, place name, or lat, lon above.'],
+   ['noMatch', PLACES.length && !nVisible, 'No places have the selected activity tags.']].forEach(function(m) {
+    var e = document.getElementById(m[0]);
+    if (m[1] && !e) {
+      e = document.createElement('div');
+      e.id = m[0];
+      e.className = 'empty';
+      e.style.background = 'var(--surface)';
+      e.textContent = m[2];
+      c.appendChild(e);
+    } else if (!m[1] && e) {
+      e.parentNode.removeChild(e);
+    }
+  });
 }
 
 // ── Time zones: each place uses the IANA zone Open-Meteo reports ───────────
@@ -579,6 +716,19 @@ function fetchJson(url) {
       throw new Error('Open-Meteo request failed (HTTP ' + r.status + ')' + (why ? ': ' + why : ''));
     });
   });
+}
+
+// Run at most MAX_CONCURRENT requests at once; the rest wait their turn
+var inflight = 0, waiting = [];
+function limited(fn) {
+  return new Promise(function(res, rej) { waiting.push({ fn: fn, res: res, rej: rej }); pump(); });
+}
+function pump() {
+  while (inflight < MAX_CONCURRENT && waiting.length) {
+    var job = waiting.shift();
+    inflight++;
+    job.fn().then(job.res, job.rej).then(function() { inflight--; pump(); });
+  }
 }
 
 function forecastUrl(p) {
@@ -657,7 +807,11 @@ function loadPlace(p) {
   pending++;
   syncRefreshBtn();
   renderCardState(p);
-  return fetchJson(forecastUrl(p))
+  renderRow(p);
+  return limited(function() {
+    if (seq !== p.seq || p.removed) return Promise.resolve(null);   // superseded while queued
+    return fetchJson(forecastUrl(p));
+  })
     .then(function(j) {
       if (seq !== p.seq || p.removed) return;
       p.data = parseForecast(j, p);
@@ -678,9 +832,12 @@ function loadPlace(p) {
       if (p.removed) return;
       if (seq === p.seq) {
         renderCardState(p);
+        renderRow(p);
         renderCard(p);
+        renderHeader();
+        applyOrder();
         updateStamp();
-        if (p.status === 'ok' && (DAYS >= ENS_MIN_DAYS || p.ens)) loadEnsemble(p);
+        if (p.status === 'ok' && p.open && (DAYS >= ENS_MIN_DAYS || p.ens)) loadEnsemble(p);
       }
     });
 }
@@ -688,7 +845,10 @@ function loadPlace(p) {
 function loadEnsemble(p) {
   var seq = ++p.ensSeq;
   p.ensStatus = 'loading';
-  return fetchJson(ensembleUrl(p))
+  return limited(function() {
+    if (seq !== p.ensSeq || p.removed) return Promise.resolve(null);
+    return fetchJson(ensembleUrl(p));
+  })
     .then(function(j) {
       if (seq !== p.ensSeq || p.removed) return;
       p.ens = parseEnsemble(j);
@@ -703,6 +863,7 @@ function loadEnsemble(p) {
     .then(function() {
       if (seq !== p.ensSeq || p.removed) return;
       renderCard(p);
+      renderCardState(p);
     });
 }
 
@@ -732,15 +893,16 @@ function refreshStale() {
 
 // ── Series: slice to the chosen range, aggregate to 3 h for long ranges ────
 function agg(arr, i0, i1, mode) {
-  var s = 0, c = 0, mx = null;
+  var s = 0, c = 0, mx = null, mn = null;
   for (var i = i0; i < i1; i++) {
     var v = arr[i];
     if (v == null || !isFinite(v)) continue;
     s += v; c++;
     if (mx == null || v > mx) mx = v;
+    if (mn == null || v < mn) mn = v;
   }
   if (!c) return null;
-  return mode === 'sum' ? s : mode === 'max' ? mx : s / c;
+  return mode === 'sum' ? s : mode === 'max' ? mx : mode === 'min' ? mn : s / c;
 }
 
 // Speed-weighted circular mean of wind direction (degrees)
@@ -845,6 +1007,56 @@ function prepareDays(p) {
   }
   p.data.wall = wall;
   p.data.days = days;
+  // overview grid: one aggregate per local day (the last may be shorter than 24 h)
+  p.data.daily = days.map(function(ds, k) {
+    return dayStats(p, ds.i, k + 1 < days.length ? days[k + 1].i : t.length, ds.w);
+  });
+}
+
+function pick(arr, idx) { return idx.map(function(i) { return arr[i]; }); }
+
+// Icon code for a day from its daylight hours: any thunderstorm wins; otherwise the most
+// common precipitating code if at least PRECIP_CODE_HOURS hours precipitate; otherwise
+// the median of the dry codes (clear < partly cloudy < overcast)
+function dayCode(codes, idx) {
+  var cnt = {}, nPrec = 0, thunder = null, dry = [];
+  idx.forEach(function(i) {
+    var c = codes[i];
+    if (c == null) return;
+    if (c < 51) { dry.push(c); return; }
+    nPrec++;
+    cnt[c] = (cnt[c] || 0) + 1;
+    if (c >= 95) thunder = Math.max(thunder || 0, c);
+  });
+  if (thunder != null) return thunder;
+  if (nPrec >= PRECIP_CODE_HOURS || !dry.length) {
+    var best = null;
+    Object.keys(cnt).forEach(function(k) {
+      if (best == null || cnt[k] > cnt[best] || (cnt[k] === cnt[best] && +k > +best)) best = k;
+    });
+    return best == null ? null : +best;
+  }
+  dry.sort(function(a, b) { return a - b; });
+  return dry[Math.floor(dry.length / 2)];
+}
+
+// Aggregates for hourly indices [a, b): temperatures in degC, wind km/h, depths mm / cm, height m.
+// Daylight (is_day) hours drive the icon and the freezing level; all other fields use the whole day.
+function dayStats(p, a, b, w) {
+  var h = p.data.h, i, day = [], all = [];
+  for (i = a; i < b; i++) { all.push(i); if (h.is_day[i] === 1) day.push(i); }
+  if (!day.length) day = all;      // polar night or missing is_day
+  var rain = agg(h.rainW, a, b, 'sum'), snow = agg(h.snowWE, a, b, 'sum');
+  return {
+    key: w.y * 10000 + w.mo * 100 + w.d, wd: w.wd, mo: w.mo, d: w.d,
+    hi: agg(h.temperature_2m, a, b, 'max'), lo: agg(h.temperature_2m, a, b, 'min'),
+    code: dayCode(h.weather_code, day),
+    rain: rain || 0, snowWE: snow || 0, total: rain == null && snow == null ? null : (rain || 0) + (snow || 0),
+    snowCm: agg(h.snowfall, a, b, 'sum'),
+    prob: agg(h.precipitation_probability, a, b, 'max'),
+    ws: agg(h.wind_speed_10m, a, b, 'max'), dir: aggDir(h.wind_direction_10m, h.wind_speed_10m, a, b),
+    frz: agg(pick(h.freezing_level_height, day), 0, day.length, 'mean')
+  };
 }
 
 // ── Scales ─────────────────────────────────────────────────────────────────
@@ -1105,7 +1317,7 @@ function hGrid(ctx, g, pn, ticks, sc) {
 
 function renderCard(p) {
   var e = p.el;
-  if (!e || !p.data) return;
+  if (!e || !p.data || !p.open) return;
   var P = pal();
   var S = buildSeries(p);
   var E = DAYS >= ENS_MIN_DAYS && p.ens ? buildEns(p, S) : null;
@@ -1494,8 +1706,12 @@ document.addEventListener('pointerdown', function(ev) {
 
 // ── Drag to reorder ────────────────────────────────────────────────────────
 var drag = null;
+// Dragging edits the saved order, which is only what the screen shows when nothing is ranked or grouped
+function dragLocked() { return !!TARGET || GROUP; }
+
 function startDrag(ev, p) {
   ev.preventDefault();
+  if (dragLocked()) return;
   ev.currentTarget.setPointerCapture(ev.pointerId);
   drag = { p: p, y: ev.clientY, target: null, after: false, timer: null };
   p.el.root.classList.add('dragging');
@@ -1532,45 +1748,331 @@ function endDrag() {
   PLACES = PLACES.filter(function(q) { return q !== d.p; });
   var at = PLACES.indexOf(d.target) + (d.after ? 1 : 0);
   PLACES.splice(at, 0, d.p);
-  var c = document.getElementById('cards');
-  PLACES.forEach(function(q) { c.appendChild(q.el.root); });
   savePlaces();
-  // DOM moves can reset scroll positions; put every card back on the shared instant
-  PLACES.forEach(restoreScroll);
+  applyOrder();
+  renderHeader();
 }
 
-// ── Card DOM ───────────────────────────────────────────────────────────────
+// ── Overview grid ──────────────────────────────────────────────────────────
+function refPlace() {
+  for (var i = 0; i < PLACES.length; i++) if (PLACES[i].data && PLACES[i].data.daily) return PLACES[i];
+  return null;
+}
+
+// Column headings follow the first place that has data; other places' cells show their own date when it differs
+function renderHeader() {
+  var ref = refPlace(), html = '<div class="gcorner">' + PLACES.length + (PLACES.length === 1 ? ' place' : ' places') + '</div>';
+  for (var k = 0; k < DAYS; k++) {
+    var d = ref && ref.data.daily[k];
+    var on = TARGET && k >= TARGET.a && k <= TARGET.b;
+    html += '<button type="button" class="hd" data-col="' + k + '" aria-pressed="' + !!on + '"' +
+            ' title="Rank places for this day (shift-click another day for a span)">' +
+            (d ? '<b>' + WD[d.wd] + '</b><span>' + MON[d.mo - 1] + ' ' + d.d + '</span>' : '<b>Day ' + (k + 1) + '</b><span>&nbsp;</span>') +
+            '</button>';
+  }
+  document.getElementById('ghead').innerHTML = html;
+  syncViewBar();
+}
+
+function dayLabel(d) { return WD[d.wd] + ' ' + MON[d.mo - 1] + ' ' + d.d; }
+
+function tempTint(c) {
+  if (c == null) return '';
+  var t = clamp((c - TEMP_TINT_C[0]) / (TEMP_TINT_C[1] - TEMP_TINT_C[0]), 0, 1);
+  return 'background:hsla(' + Math.round(220 * (1 - t)) + ',75%,50%,.32)';
+}
+
+function rgba(name, a) { return 'rgba(var(--' + name + '-rgb),' + a.toFixed(2) + ')'; }
+
+function precipAlpha(mm, prob) {
+  var pr = prob == null ? 0 : prob;
+  if (mm < 0.05 && pr < 30) return 0;
+  return Math.min(0.5, 0.45 * Math.pow(clamp(mm / PRECIP_FULL_MM, 0, 1), 0.6) + 0.12 * clamp(pr / 100, 0, 1));
+}
+
+function cellHtml(p, k, st, refKey) {
+  var u = U(), tx = function(v) { return v == null ? '–' : Math.round(cv('temp', v)) + '°'; };
+  var tot = st.total == null ? null : cv('precip', st.total);
+  var ptxt = tot == null ? '–' : (tot < Math.pow(10, -u.precip.dp) / 2 ? '0' : tot.toFixed(u.precip.dp)) + ' ' + u.precip.u;
+  var ptxt2 = ptxt + ' · ' + (st.prob == null ? '–' : Math.round(st.prob) + '%');
+  var snowDom = st.snowWE >= st.rain;
+  var pa = st.total == null ? 0 : precipAlpha(st.total, st.prob);
+  var pstyle = pa ? ' style="background:' + rgba(snowDom ? 'snow' : 'rain', pa) + '"' : '';
+  var bar = '';
+  if (st.total > 0.05) {
+    var full = clamp(st.total / PRECIP_FULL_MM, 0.06, 1) * 100, sp = st.snowWE / st.total * full;
+    bar = '<div class="pbar"><i style="width:' + (full - sp).toFixed(1) + '%;background:' + rgba('rain', 0.9) + '"></i>' +
+          '<i style="width:' + sp.toFixed(1) + '%;background:' + rgba('snow', 1) + '"></i></div>';
+  }
+  var wv = st.ws == null ? null : cv('wind', st.ws), wlvl = wv == null ? 0 : wv >= u.wind.high ? 2 : wv >= u.wind.warn ? 1 : 0;
+  var wstyle = wlvl ? ' style="background:' + rgba(wlvl === 2 ? 'red' : 'amber', wlvl === 2 ? 0.5 : 0.4) + '"' : '';
+  var wtxt = wv == null ? '–' : Math.round(wv) + ' ' + u.wind.u + (st.dir == null ? '' : ' ' + COMPASS[Math.round(st.dir / 22.5) % 16]);
+  var sv = st.snowCm == null ? null : cv('snow', st.snowCm);
+  var snowOn = st.snowCm != null && st.snowCm >= 0.05;
+  var sstyle = snowOn ? ' style="background:' + rgba('snow', Math.min(0.5, 0.15 + 0.35 * clamp(st.snowCm / SNOW_FULL_CM, 0, 1))) + '"' : '';
+  var ftxt = st.frz == null ? '–' : Math.round(cv('height', st.frz)).toLocaleString() + ' ' + u.height.u;
+  var w = WMO[st.code];
+  var title = dayLabel(st) + ' · ' + (w ? w[0] : 'no weather code') + ' · high ' + tx(st.hi) + u.temp.u.slice(1) + ', low ' + tx(st.lo) + u.temp.u.slice(1) +
+    ' · precipitation ' + ptxt + ' water equivalent (rain ' + fv(cv('precip', st.rain), u.precip.dp) + ', snow ' + fv(cv('precip', st.snowWE), u.precip.dp) +
+    '), chance up to ' + (st.prob == null ? '–' : Math.round(st.prob) + '%') + ' · wind up to ' + wtxt +
+    ' · new snow ' + (sv == null ? '–' : fv(sv, u.snow.dp) + ' ' + u.snow.u) + ' · freezing level ' + ftxt + ' (daylight mean)';
+  return '<div class="gc" data-col="' + k + '" title="' + esc(title) + '">' +
+    (st.key !== refKey ? '<span class="gdate">' + WD[st.wd] + ' ' + st.d + '</span>' : '') +
+    '<div class="gtop"><canvas class="gi" data-code="' + (st.code == null ? '' : st.code) + '"></canvas>' +
+    '<div class="temps"><span class="tt hi" style="' + tempTint(st.hi) + '">' + tx(st.hi) + '</span>' +
+    '<span class="tt" style="' + tempTint(st.lo) + '">' + tx(st.lo) + '</span></div></div>' +
+    '<div class="ln' + (pa ? '' : ' z') + '"' + pstyle + '>' + esc(ptxt2) + '</div>' + bar +
+    '<div class="ln' + (wlvl === 2 ? ' w2' : '') + '"' + wstyle + '>' + esc(wtxt) + '</div>' +
+    '<div class="ln' + (snowOn ? '' : ' z') + '"' + sstyle + '><em>snow</em>' + (sv == null ? '–' : fv(sv, u.snow.dp) + ' ' + u.snow.u) + '</div>' +
+    '<div class="ln z"><em>frz</em>' + esc(ftxt) + '</div></div>';
+}
+
+var ICON_PX = 28;
+function renderRow(p, P) {
+  var e = p.el;
+  if (!e) return;
+  var host = e.cells;
+  e.cellEls = [];
+  if (!p.data || !p.data.daily) {
+    var bad = p.status === 'error' && p.err;
+    host.innerHTML = '<div class="gmsg' + (bad ? ' bad' : '') + '">' +
+      (bad ? esc('Could not load forecast: ' + p.err) + '<button type="button" class="retry">Retry</button>' : 'Loading…') + '</div>';
+    return;
+  }
+  P = P || pal();
+  var ref = refPlace(), html = '', n = Math.min(DAYS, p.data.daily.length);
+  for (var k = 0; k < n; k++) html += cellHtml(p, k, p.data.daily[k], ref && ref.data.daily[k] ? ref.data.daily[k].key : null);
+  host.innerHTML = html;
+  var cs = host.children;
+  for (k = 0; k < cs.length; k++) {
+    e.cellEls.push(cs[k]);
+    var cvs = cs[k].querySelector('canvas.gi'), code = cvs.getAttribute('data-code');
+    var ctx = setupCanvas(cvs, ICON_PX, ICON_PX);
+    if (code !== '') drawIcon(ctx, +code, true, ICON_PX / 2, ICON_PX / 2, ICON_PX, P);
+  }
+  markTarget(p);
+}
+
+function markTarget(p) {
+  (p.el.cellEls || []).forEach(function(c, k) {
+    c.classList.toggle('tcol', !!TARGET && k >= TARGET.a && k <= TARGET.b);
+  });
+}
+
+// Sort key for the ranked day span (lower is better), or null when the data are missing
+function sortKey(p) {
+  var d = p.data && p.data.daily;
+  if (!d || !TARGET || TARGET.b >= d.length) return null;
+  var field = { dry: 'total', calm: 'ws', warm: 'hi', cool: 'hi', snow: 'snowCm' }[SORT];
+  var sum = 0, mx = -Infinity, prob = 0;
+  for (var k = TARGET.a; k <= TARGET.b; k++) {
+    var v = d[k][field];
+    if (v == null) return null;
+    sum += v; mx = Math.max(mx, v);
+    if (d[k].prob != null) prob = Math.max(prob, d[k].prob);
+  }
+  // rounded so negligible differences fall through to the tiebreak
+  function r(x, q) { return Math.round(x / q) * q; }
+  switch (SORT) {
+    case 'dry':  return [r(sum, 0.1), prob];       // span total, then highest chance
+    case 'calm': return [r(mx, 1)];                // span maximum
+    case 'warm': return [-r(mx, 0.1)];
+    case 'cool': return [r(mx, 0.1)];
+    default:     return [-r(sum, 0.1)];            // most new snow over the span
+  }
+}
+
+function cmpKey(a, b) {
+  if (!a || !b) return a ? -1 : b ? 1 : 0;
+  for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  return 0;
+}
+
+function placeVisible(p) {
+  return !TAGFILTER.length || p.tags.some(function(t) { return TAGFILTER.indexOf(t) >= 0; });
+}
+
+// Order rows: filter by tag, optionally group, then rank within each group when a day is targeted
+function applyOrder() {
+  var body = document.getElementById('cards'), vis = PLACES.filter(placeVisible), want = [], k;
+  groupEls.forEach(function(g) { if (g.parentNode) g.parentNode.removeChild(g); });
+  groupEls = [];
+  var buckets = [];
+  if (GROUP) {
+    TAGS.concat([null]).forEach(function(t) {
+      var list = vis.filter(function(p) { return (TAGS.filter(function(x) { return p.tags.indexOf(x) >= 0; })[0] || null) === t; });
+      if (list.length) buckets.push({ name: t || 'Untagged', list: list });
+    });
+  } else {
+    buckets.push({ name: null, list: vis });
+  }
+  buckets.forEach(function(bk) {
+    if (bk.name) {
+      var g = document.createElement('div');
+      g.className = 'ghd';
+      g.textContent = bk.name + ' · ' + bk.list.length;
+      groupEls.push(g);
+      want.push(g);
+    }
+    var items = bk.list.map(function(p, i) { return { p: p, i: i, k: TARGET ? sortKey(p) : null }; });
+    if (TARGET) items.sort(function(x, y) { return cmpKey(x.k, y.k) || x.i - y.i; });
+    items.forEach(function(it, i) {
+      // equal keys share a rank (1, 2, 2, 4)
+      it.p.rank = !TARGET || !it.k ? null : (i && cmpKey(items[i - 1].k, it.k) === 0 ? items[i - 1].p.rank : i + 1);
+      want.push(it.p.el.root);
+    });
+  });
+  PLACES.forEach(function(p) {
+    var show = vis.indexOf(p) >= 0, e = p.el;
+    e.root.hidden = !show;
+    if (!show) { p.rank = null; want.push(e.root); }
+    e.rank.hidden = p.rank == null;
+    e.rank.textContent = p.rank == null ? '' : p.rank;
+    e.grip.classList.toggle('off', dragLocked());
+    e.grip.title = dragLocked() ? 'Clear ranking and grouping to reorder' : 'Drag to reorder';
+  });
+  var moved = false;
+  for (k = 0; k < want.length; k++) {
+    if (body.children[k] !== want[k]) { body.insertBefore(want[k], body.children[k] || null); moved = true; }
+  }
+  showEmpty(vis.length);
+  // DOM moves can reset scroll positions; put every open meteogram back on the shared instant
+  if (moved) PLACES.forEach(function(p) { if (p.open && p.layout) restoreScroll(p); });
+}
+
+function setTarget(t) {
+  TARGET = t;
+  document.querySelectorAll('#ghead .hd').forEach(function(b, k) {
+    b.setAttribute('aria-pressed', String(!!t && k >= t.a && k <= t.b));
+  });
+  PLACES.forEach(markTarget);
+  syncViewBar();
+  applyOrder();
+}
+
+function onHeaderClick(k, shift) {
+  var T = TARGET;
+  if (T && (shift || SPAN_MODE)) {
+    SPAN_MODE = false;
+    setTarget({ a: Math.min(T.anchor, k), b: Math.max(T.anchor, k), anchor: T.anchor });
+  } else if (T && k >= T.a && k <= T.b) {
+    setTarget(null);      // clicking the targeted day again returns to the saved order
+  } else {
+    SPAN_MODE = false;
+    setTarget({ a: k, b: k, anchor: k });
+  }
+}
+
+function syncViewBar() {
+  var chips = document.getElementById('filterChips').children, i;
+  for (i = 0; i < chips.length; i++) {
+    chips[i].setAttribute('aria-pressed', String(TAGFILTER.indexOf(chips[i].getAttribute('data-tag')) >= 0));
+  }
+  document.getElementById('groupBtn').setAttribute('aria-pressed', String(GROUP));
+  document.getElementById('sortSel').value = SORT;
+  document.getElementById('spanBtn').setAttribute('aria-pressed', String(SPAN_MODE));
+  document.getElementById('clearBtn').hidden = !TARGET;
+  var info = document.getElementById('rankInfo'), ref = refPlace(), name = '';
+  SORTS.forEach(function(x) { if (x[0] === SORT) name = x[1]; });
+  if (TARGET) {
+    var da = ref && ref.data.daily[TARGET.a], db = ref && ref.data.daily[TARGET.b];
+    var span = da && db ? dayLabel(da) + (TARGET.b > TARGET.a ? ' – ' + dayLabel(db) : '') : 'selected days';
+    info.innerHTML = 'Ranking <b>' + esc(span) + '</b> by <b>' + esc(name) + '</b>' +
+      (TARGET.b > TARGET.a ? ' (span totals for precipitation and snow, maxima for wind and highs)' : '') +
+      '. Drag reorder is off while ranked.';
+  } else {
+    info.textContent = 'Click a day heading to rank places for that day; shift-click (or Span, then tap) a second heading for a range. Click a row for its meteogram.';
+  }
+}
+
+function toggleOpen(p) {
+  p.open = !p.open;
+  p.el.cnb.setAttribute('aria-expanded', String(p.open));
+  p.el.detail.hidden = !p.open;
+  if (p.open) {
+    renderCardState(p);
+    renderCard(p);
+    if (p.status === 'ok' && DAYS >= ENS_MIN_DAYS && !p.ens && p.ensStatus !== 'loading' && p.ensStatus !== 'error') loadEnsemble(p);
+  } else {
+    p.layout = null; p.S = null; p.vals = {};
+    p.el.canvas.width = p.el.canvas.height = p.el.axis.width = p.el.axis.height = 0;
+  }
+}
+
+function toggleTag(p, tag) {
+  var i = p.tags.indexOf(tag);
+  if (i >= 0) p.tags.splice(i, 1); else p.tags.push(tag);
+  p.tags = cleanTags(p.tags);
+  syncTagBtns(p);
+  savePlaces();
+  applyOrder();
+}
+
+function syncTagBtns(p) {
+  p.el.tagBtns.forEach(function(b) {
+    b.setAttribute('aria-pressed', String(p.tags.indexOf(b.getAttribute('data-tag')) >= 0));
+  });
+}
+
+// ── Row DOM: pinned name cell, day cells, and the collapsible meteogram ────
 function buildCard(p) {
   var root = document.createElement('div');
-  root.className = 'card';
+  root.className = 'prow';
   root.innerHTML =
-    '<div class="card-hdr">' +
-      '<button type="button" class="grip" title="Drag to reorder" aria-label="Drag to reorder">&#8942;&#8942;</button>' +
-      '<div class="cinfo"><div class="cname"></div><div class="cmeta"></div></div>' +
-      '<div class="ctime"></div>' +
-      '<button type="button" class="rm" title="Remove" aria-label="Remove">&times;</button>' +
+    '<div class="grow">' +
+      '<div class="gname">' +
+        '<div class="gn1">' +
+          '<button type="button" class="grip" title="Drag to reorder" aria-label="Drag to reorder">&#8942;&#8942;</button>' +
+          '<span class="rank" hidden></span>' +
+          '<button type="button" class="cnb" aria-expanded="false" title="Show or hide the full meteogram"></button>' +
+          '<button type="button" class="rm" title="Remove" aria-label="Remove">&times;</button>' +
+        '</div>' +
+        '<div class="tags" role="group" aria-label="Activities">' +
+          TAGS.map(function(t) { return '<button type="button" class="tag" data-tag="' + t + '" aria-pressed="false">' + t + '</button>'; }).join('') +
+        '</div>' +
+        '<div class="gstale" hidden>Refresh failed <button type="button" class="retry">Retry</button></div>' +
+      '</div>' +
+      '<div class="gcells"></div>' +
     '</div>' +
-    '<div class="cerr" hidden><span class="msg"></span><button type="button" class="retry">Retry</button></div>' +
-    '<div class="cload">Loading…</div>' +
-    '<div class="cbody" hidden>' +
-      '<canvas class="axis" role="presentation"></canvas>' +
-      '<div class="scroller"><div class="sc-inner">' +
-        '<canvas role="img"></canvas><div class="nowline"></div><div class="curline"></div><div class="curtag"></div>' +
-      '</div></div>' +
-      '<div class="legs" style="left:' + AXIS_W + 'px"></div>' +
-    '</div>';
+    '<div class="gdetail" hidden><div class="card">' +
+      '<div class="card-hdr">' +
+        '<div class="cinfo"><div class="cname"></div><div class="cmeta"></div></div>' +
+        '<div class="ctime"></div>' +
+      '</div>' +
+      '<div class="cerr" hidden><span class="msg"></span><button type="button" class="retry">Retry</button></div>' +
+      '<div class="cload">Loading…</div>' +
+      '<div class="cbody" hidden>' +
+        '<canvas class="axis" role="presentation"></canvas>' +
+        '<div class="scroller"><div class="sc-inner">' +
+          '<canvas role="img"></canvas><div class="nowline"></div><div class="curline"></div><div class="curtag"></div>' +
+        '</div></div>' +
+        '<div class="legs" style="left:' + AXIS_W + 'px"></div>' +
+      '</div>' +
+    '</div></div>';
   var q = function(s) { return root.querySelector(s); };
   p.el = {
-    root: root, name: q('.cname'), meta: q('.cmeta'), ctime: q('.ctime'), err: q('.cerr'), msg: q('.msg'),
+    root: root, row: q('.grow'), cells: q('.gcells'), cellEls: [], rank: q('.rank'), grip: q('.grip'), cnb: q('.cnb'),
+    stale: q('.gstale'), detail: q('.gdetail'), tagBtns: [].slice.call(root.querySelectorAll('.tag')),
+    name: q('.cname'), meta: q('.cmeta'), ctime: q('.ctime'), err: q('.cerr'), msg: q('.msg'),
     load: q('.cload'), body: q('.cbody'), axis: q('.axis'), scroller: q('.scroller'), inner: q('.sc-inner'),
     canvas: q('.sc-inner canvas'), nowline: q('.nowline'), curline: q('.curline'), curtag: q('.curtag'), legs: q('.legs')
   };
   p.vals = {};
   p.el.name.textContent = p.label;
-  p.el.name.title = p.label;
+  p.el.cnb.textContent = p.label;
+  p.el.cnb.title = p.label;
+  syncTagBtns(p);
   q('.rm').addEventListener('click', function() { removePlace(p); });
-  q('.retry').addEventListener('click', function() { loadPlace(p); });
-  var grip = q('.grip');
+  p.el.tagBtns.forEach(function(b) {
+    b.addEventListener('click', function() { toggleTag(p, b.getAttribute('data-tag')); });
+  });
+  root.addEventListener('click', function(ev) {
+    if (ev.target.closest('.retry')) { loadPlace(p); return; }
+    if (ev.target.closest('button')) return;
+    if (p.el.row.contains(ev.target)) toggleOpen(p);
+  });
+  p.el.cnb.addEventListener('click', function() { toggleOpen(p); });
+  var grip = p.el.grip;
   grip.addEventListener('pointerdown', function(ev) { startDrag(ev, p); });
   grip.addEventListener('pointermove', moveDrag);
   grip.addEventListener('pointerup', endDrag);
@@ -1582,8 +2084,8 @@ function buildCard(p) {
   sc.addEventListener('pointerleave', function(ev) {
     if (ev.pointerType === 'mouse') { cursorT = null; updateCursor(); }
   });
-  showEmpty();
   renderCardState(p);
+  renderRow(p);
   return root;
 }
 
@@ -1605,6 +2107,7 @@ function renderCardState(p) {
   if (p.data && DAYS >= ENS_MIN_DAYS && p.ensStatus === 'error') bits.push('ensemble unavailable');
   e.meta.textContent = bits.join(' · ');
   var failed = !!p.err && p.seq && p.attemptAt && !(p.fetchedAt >= p.attemptAt);
+  e.stale.hidden = !(failed && p.data);   // the row keeps showing older data; the no-data case is drawn by renderRow
   e.err.hidden = !failed;
   e.msg.textContent = failed ? (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + p.err : '';
   e.load.hidden = !(p.status === 'loading' && !p.data);
@@ -1612,12 +2115,18 @@ function renderCardState(p) {
 }
 
 function renderAll() {
+  var g = document.getElementById('grid');
+  g.style.setProperty('--cols', DAYS);
+  g.style.setProperty('--gw', g.clientWidth + 'px');   // open meteograms are as wide as the visible grid
   computePph();
-  PLACES.forEach(function(p) { renderCardState(p); renderCard(p); });
+  var P = pal();
+  renderHeader();
+  PLACES.forEach(function(p) { renderCardState(p); renderRow(p, P); renderCard(p); });
+  applyOrder();
 }
 
 function computePph() {
-  var w = document.getElementById('cards').clientWidth - 32 - AXIS_W;
+  var w = document.getElementById('grid').clientWidth - 32 - AXIS_W;
   PPH = Math.max(MIN_PX_PER_HOUR, w / (DAYS * 24));
 }
 
@@ -1633,11 +2142,13 @@ function setDays(n) {
   if (n === DAYS) return;
   DAYS = n;
   viewT = null;
+  if (TARGET && TARGET.a >= DAYS) TARGET = null;
+  else if (TARGET && TARGET.b >= DAYS) TARGET = { a: TARGET.a, b: DAYS - 1, anchor: Math.min(TARGET.anchor, DAYS - 1) };
   syncSegs();
   renderAll();
   if (DAYS >= ENS_MIN_DAYS) {
     PLACES.forEach(function(p) {
-      if (p.status === 'ok' && !p.ens && p.ensStatus !== 'loading' && p.ensStatus !== 'error') loadEnsemble(p);
+      if (p.open && p.status === 'ok' && !p.ens && p.ensStatus !== 'loading' && p.ensStatus !== 'error') loadEnsemble(p);
     });
   }
 }
@@ -1666,6 +2177,55 @@ function setUnits(u) {
   document.getElementById('unitSeg').addEventListener('click', function(e) {
     var b = e.target.closest ? e.target.closest('button[data-units]') : null;
     if (b) setUnits(b.getAttribute('data-units'));
+  });
+
+  // overview controls: activity filter, grouping, ranking
+  var chips = document.getElementById('filterChips');
+  TAGS.forEach(function(t) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.setAttribute('data-tag', t);
+    b.textContent = t;
+    chips.appendChild(b);
+  });
+  chips.addEventListener('click', function(e) {
+    var b = e.target.closest ? e.target.closest('button[data-tag]') : null;
+    if (!b) return;
+    var t = b.getAttribute('data-tag'), i = TAGFILTER.indexOf(t);
+    if (i >= 0) TAGFILTER.splice(i, 1); else TAGFILTER.push(t);
+    TAGFILTER = cleanTags(TAGFILTER);
+    savePrefs();
+    syncViewBar();
+    applyOrder();
+  });
+  document.getElementById('groupBtn').addEventListener('click', function() {
+    GROUP = !GROUP;
+    savePrefs();
+    syncViewBar();
+    applyOrder();
+  });
+  var sel = document.getElementById('sortSel');
+  SORTS.forEach(function(x) {
+    var o = document.createElement('option');
+    o.value = x[0];
+    o.textContent = x[1];
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', function() {
+    SORT = sel.value;
+    savePrefs();
+    syncViewBar();
+    applyOrder();
+  });
+  document.getElementById('spanBtn').addEventListener('click', function() {
+    SPAN_MODE = !SPAN_MODE;
+    syncViewBar();
+  });
+  document.getElementById('clearBtn').addEventListener('click', function() { setTarget(null); });
+  document.getElementById('ghead').addEventListener('click', function(e) {
+    var b = e.target.closest ? e.target.closest('button[data-col]') : null;
+    if (b) onHeaderClick(+b.getAttribute('data-col'), e.shiftKey);
   });
 })();
 
@@ -1698,17 +2258,22 @@ setInterval(function() {
 // ── Init ───────────────────────────────────────────────────────────────────
 (function() {
   UNIT = loadSavedUnits() || 'imperial';
+  loadPrefs();
   var list = loadSavedPlaces();
   if (!list.length) list = [validPlace(DEFAULT_PLACE.lat, DEFAULT_PLACE.lon, DEFAULT_PLACE.label)];
   syncSegs();
-  computePph();
   var c = document.getElementById('cards');
   list.forEach(function(loc) {
     var p = makePlace(loc);
     PLACES.push(p);
     c.appendChild(buildCard(p));
   });
+  var g = document.getElementById('grid');
+  g.style.setProperty('--cols', DAYS);
+  g.style.setProperty('--gw', g.clientWidth + 'px');
   computePph();
+  renderHeader();
+  applyOrder();
   PLACES.forEach(function(p) { loadPlace(p); });
 })();
 </script>
