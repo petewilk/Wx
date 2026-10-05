@@ -89,6 +89,11 @@ function tzlookup(Y,W){"use strict";var U="XIXHXHXGXGXQXQXPXPXOXOXN##U6U6UW#$U%U
   html.light .seg button[aria-pressed=true]{color:#fff}
   .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:2}
   .dst-note{margin-top:6px}
+  .eot-note{margin-top:12px;font-size:11px;line-height:1.5;color:var(--muted);max-width:80ch}
+  .eot-note b{color:var(--text);font-weight:600}
+  .eot-note a{color:var(--accent);text-decoration:none}
+  .eot-note a:hover{text-decoration:underline}
+  .eot-links{display:block;margin-top:4px}
   .chart-wrap.dragging{cursor:grabbing}
   .chart-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -161,6 +166,13 @@ function tzlookup(Y,W){"use strict";var U="XIXHXHXGXGXQXQXPXPXOXOXN##U6U6UW#$U%U
     </div>
     <div class="chart-box sr"><canvas id="srChart" role="img" aria-label="Local clock time of sunrise (solid) and sunset (dashed)"></canvas></div>
     <div class="hint dst-note" id="dstNote" hidden></div>
+  </div>
+  <div class="eot-note">
+    <b>Why the earliest sunrise isn&rsquo;t on the longest day.</b>
+    Sunrise and sunset sit symmetrically around solar noon (the sun&rsquo;s highest point), but solar noon drifts by about &plusmn;15&nbsp;min on the clock over the year &mdash; the <i>equation of time</i>, caused by Earth&rsquo;s elliptical orbit and its axial tilt.
+    Near the solstices day length barely changes while solar noon keeps getting later, so the drift wins: at mid-northern latitudes the earliest sunrise comes about a week before the June solstice and the latest sunset about a week after, while the earliest sunset is about two weeks before the December solstice and the latest sunrise about two weeks after (the orbit adds to the effect in December).
+    The dots on the sunrise/sunset chart mark these dates.
+    <span class="eot-links">More: <a href="https://en.wikipedia.org/wiki/Equation_of_time" target="_blank" rel="noopener">Equation of time (Wikipedia)</a> &middot; <a href="https://aa.usno.navy.mil/faq/eqtime" target="_blank" rel="noopener">USNO: The equation of time</a> &middot; <a href="https://gml.noaa.gov/grad/solcalc/calcdetails.html" target="_blank" rel="noopener">NOAA solar calculation details</a></span>
   </div>
 </div>
 
@@ -788,6 +800,46 @@ function seriesFor(l, r, fn) {
   return pts;
 }
 
+// Offset-free curves used only to find turning points (null = polar clamp or gap).
+// Sunrise/sunset in UTC minutes have the same shape as in any clock mode.
+function dlShape(n, l) {
+  var sd = solarDay(n, l.lat, l.lon);
+  return sd.polar ? null : 8 * sd.H;
+}
+function rateShape(n, l) {
+  var a = dlShape(n, l), b = dlShape(n - 1, l);
+  return a == null || b == null ? null : a - b;
+}
+function riseShape(n, l) { return sunTimes(n, l.lat, l.lon).rise; }
+function setShape(n, l) { return sunTimes(n, l.lat, l.lon).set; }
+
+// Data indices (into the day series for range r) of every local max/min of
+// shape(n, l): a strict sign change of the day-over-day difference, with all
+// three points valid. Window endpoints and polar plateaus/gap edges never qualify.
+function extremaIdx(l, r, shape) {
+  var v = [], out = [], i;
+  for (var n = r.min; n <= r.max; n++) v.push(shape(n, l));
+  for (i = 1; i < v.length - 1; i++) {
+    if (v[i - 1] == null || v[i] == null || v[i + 1] == null) continue;
+    var d0 = v[i] - v[i - 1], d1 = v[i + 1] - v[i];
+    if ((d0 > 0 && d1 < 0) || (d0 < 0 && d1 > 0)) out.push(i);
+  }
+  return out;
+}
+
+// Mark extrema on dataset ds: filled dot in the line's color with a thin surface
+// outline so it reads over other lines. ds.extIdx feeds the hover snap.
+function markExtrema(ds, l, r, shape) {
+  var idx = extremaIdx(l, r, shape), set = {};
+  idx.forEach(function(i) { set[i] = true; });
+  ds.extIdx = idx;
+  ds.pointRadius = function(ctx) { return set[ctx.dataIndex] ? 3.5 : 0; };
+  ds.pointHoverRadius = function(ctx) { return set[ctx.dataIndex] ? 4.5 : 3; };
+  ds.pointBorderColor = cssVar('--surface');
+  ds.pointBorderWidth = 1;
+  return ds;
+}
+
 function rateAt(n, l) { return rate(n, l.lat, l.lon); }
 function hoursAt(n, l) { return dayLength(n, l.lat, l.lon) / 60; }
 // Local clock minutes in the current mode; null (a gap) when the sun doesn't rise/set
@@ -868,6 +920,20 @@ function allCharts() {
   return [chart, dlChart, srChart].filter(Boolean);
 }
 
+// Gentle snap: within SNAP_PX of an extremum (any dataset in chart c), hover
+// that extremum's day instead of the nearest day; -1 if none close enough
+var SNAP_PX = 10;
+function snapIndex(c, px) {
+  var x = c.scales.x, r0 = x.min, best = -1, bestD = SNAP_PX + 1;
+  c.data.datasets.forEach(function(ds) {
+    (ds.extIdx || []).forEach(function(i) {
+      var d = Math.abs(x.getPixelForValue(r0 + i) - px);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+  });
+  return best;
+}
+
 // Mirror hover across all charts: hovering one shows the same day's tooltip on
 // the others. Charts have different dataset counts (the sunrise/sunset chart
 // has two per location), so sync by data index, activating every dataset.
@@ -879,14 +945,18 @@ var hoverSyncPlugin = {
     var hit = e.type === 'mouseout' || drag ? [] :
       c.getElementsAtEventForMode(e, 'index', { intersect: false }, false);
     var idx = hit.length ? hit[0].index : -1;
+    var snap = idx < 0 ? -1 : snapIndex(c, e.x);
+    if (snap >= 0) idx = snap;
     allCharts().forEach(function(other) {
-      if (other === c) return;
+      if (other === c && snap < 0) return;   // un-snapped: Chart.js already did this chart
       var els = idx < 0 ? [] : other.data.datasets.map(function(ds, di) {
         return { datasetIndex: di, index: idx };
       });
       other.setActiveElements(els);
       other.tooltip.setActiveElements(els, { x: e.x, y: e.y });
-      other.update('none');
+      // update() inside this chart's own event handling would recurse (replayed
+      // event), so the hovered chart just asks for a redraw
+      if (other === c) args.changed = true; else other.update('none');
     });
   }
 };
@@ -899,25 +969,25 @@ var Y_AXIS_W = 58;
 function srDatasetsFor(r) {
   var sets = [];
   LOCS.forEach(function(l) {
-    [['rise', riseAt, []], ['set', setAt, [6, 3]]].forEach(function(k) {
-      sets.push({
+    [['rise', riseAt, [], riseShape], ['set', setAt, [6, 3], setShape]].forEach(function(k) {
+      sets.push(markExtrema({
         label: l.label, kind: k[0], loc: l, data: seriesFor(l, r, k[1]),
         borderColor: SLOT_COLORS[l.slot], backgroundColor: SLOT_COLORS[l.slot],
         borderWidth: 2, borderDash: k[2], pointRadius: 0, pointHoverRadius: 3,
         tension: 0, spanGaps: false
-      });
+      }, l, r, k[3]));
     });
   });
   return sets;
 }
 
-function datasetsFor(r, fn) {
+function datasetsFor(r, fn, shape) {
   return LOCS.map(function(l) {
-    return {
+    return markExtrema({
       label: l.label, data: seriesFor(l, r, fn),
       borderColor: SLOT_COLORS[l.slot], backgroundColor: SLOT_COLORS[l.slot],
-      borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: 0
-    };
+      borderWidth: 2, tension: 0
+    }, l, r, shape);
   });
 }
 
@@ -967,7 +1037,7 @@ function rateStep() { return yMax > 6 ? undefined : (yMax > 3 ? 1 : 0.5); }
 
 function renderChart() {
   var r = viewRange();
-  var rateSets = datasetsFor(r, rateAt), dlSets = datasetsFor(r, hoursAt), srSets = srDatasetsFor(r);
+  var rateSets = datasetsFor(r, rateAt, rateShape), dlSets = datasetsFor(r, hoursAt, dlShape), srSets = srDatasetsFor(r);
   if (chart) {
     chart.data.datasets = rateSets;
     chart.options.scales.y.min = -yMax;
