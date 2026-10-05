@@ -113,6 +113,46 @@
   .gmsg button{margin-left:8px}
   .ghd{position:sticky;left:0;width:var(--gw);background:var(--bg);padding:5px 10px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
   .gdetail{position:sticky;left:0;width:var(--gw);border-top:1px solid var(--border)}
+  .tag .tx{display:inline}
+  /* Graphic view: one 49 px strip per place (+ the 1 px row gap = 50 px); days are 24 h wide, so --sw = days x 24 x px-per-hour */
+  .strip,.hdays{display:none}
+  .strip{flex:none;position:relative;width:var(--sw);height:49px;touch-action:pan-x pan-y;cursor:crosshair}
+  .strip canvas{display:block;position:absolute;left:0;top:0}
+  .strip .gmsg{padding:17px 10px;white-space:nowrap}
+  .band{position:absolute;top:0;bottom:0;pointer-events:none;background:rgba(var(--accent-rgb),.15);
+    border-left:1px solid rgba(var(--accent-rgb),.7);border-right:1px solid rgba(var(--accent-rgb),.7)}
+  .cur{position:absolute;top:0;bottom:0;width:0;border-left:1px solid var(--text);opacity:.75;pointer-events:none}
+  .hdrow{display:flex}
+  .hticks{display:block;width:100%}
+  @media (min-width:601px){.gfx{--namew:196px}}
+  .gfx .strip{display:block}
+  .gfx .hdays{display:block;flex:none;width:var(--sw)}
+  .gfx .gcells,.gfx .rank{display:none!important}
+  .gfx .gin{width:calc(var(--namew) + var(--sw));min-width:0}
+  .gfx .ghead{display:flex}
+  .gfx .gcorner{flex:none;width:var(--namew);padding:6px 8px;line-height:1.3}
+  .gfx .hd{flex:none;height:30px;padding:4px 2px 2px;gap:0;line-height:1.25;overflow:hidden}
+  .gfx .grow{display:flex;height:49px}
+  .prow.moving{z-index:6}
+  .gfx .gname{flex:none;width:var(--namew);height:49px;padding:5px 6px 0 6px}
+  .gfx .gn1{align-items:center}
+  .gfx .cnb{display:block;white-space:nowrap;text-overflow:ellipsis;line-height:18px}
+  .gfx .tags{flex-wrap:nowrap;margin-top:3px}
+  .gfx .gstale{position:absolute;left:calc(100% + 4px);bottom:3px;margin:0;padding:1px 6px;white-space:nowrap;z-index:2;
+    background:var(--surface);border:1px solid var(--danger);border-radius:9px}
+  .legend{padding:6px 20px 8px;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:10px;color:var(--muted);align-items:center;border-bottom:1px solid var(--border)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{display:inline-block;width:12px;height:9px;border-radius:2px}
+  .legend i.grad{width:46px}
+  .legend i.wind{height:3px;width:14px}
+  .legend .vd{flex:1 1 100%}
+  .tip{position:fixed;z-index:50;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;
+    box-shadow:0 4px 14px rgba(0,0,0,.35);padding:7px 9px;font-size:11px;line-height:1.5;max-width:230px;font-variant-numeric:tabular-nums}
+  .tip b{font-weight:600}
+  .tip .t0{font-size:12px}
+  .tip .tm{color:var(--muted);font-size:10px}
+  .tip .r{display:flex;justify-content:space-between;gap:12px}
+  .tip .r span:first-child{color:var(--muted)}
   .card{background:var(--surface);padding:12px 16px 10px;min-width:0;position:relative}
   .card-hdr{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
   .grip{cursor:grab;touch-action:none;color:var(--muted);padding:2px 6px 2px 0;font-size:16px;line-height:1.2;user-select:none;-webkit-user-select:none;background:none;border:none}
@@ -147,7 +187,7 @@
   footer a:hover{text-decoration:underline}
   @media (max-width:600px){
     header{padding:16px 16px 12px}
-    .controls,.status,.note,footer{padding-left:16px;padding-right:16px}
+    .controls,.status,.note,.legend,footer{padding-left:16px;padding-right:16px}
     .controls input,.controls button{font-size:16px;min-height:40px}
     .loc-form{flex-basis:100%}
     #locInput{flex-basis:100%}
@@ -163,6 +203,16 @@
     .gn1 .rm{font-size:18px}
     .gn1 .grip{font-size:16px}
     .tag{line-height:16px;padding:2px 7px}
+    /* Graphic view at 50 px rows: tags shrink to initials, controls to tighter hit areas */
+    .gfx{--namew:136px}
+    .gfx .tag{line-height:14px;padding:1px 0;width:22px;text-align:center}
+    .gfx .tag .tx{display:none}
+    .gfx .tags{gap:3px}
+    .gfx .gname{padding:5px 3px 0 4px}
+    .gfx .gn1 .grip{font-size:14px;padding:1px 1px 1px 0}
+    .gfx .gn1 .ren{font-size:12px;padding:1px 2px}
+    .gfx .gn1 .rm{font-size:16px;padding:0 2px}
+    .gfx .cnb{font-size:12px}
   }
 </style>
 </head>
@@ -199,6 +249,13 @@
 
 <div class="controls vbar" id="vbar">
   <div class="grp">
+    <label>View</label>
+    <div class="seg" id="viewSeg" role="group" aria-label="Overview style">
+      <button type="button" data-view="graphic" aria-pressed="true" title="Timeline strip per place">Graphic</button>
+      <button type="button" data-view="table" aria-pressed="false" title="Text grid per day">Table</button>
+    </div>
+  </div>
+  <div class="grp">
     <label>Activity</label>
     <div class="chips" id="filterChips" role="group" aria-label="Show only places with these activity tags"></div>
   </div>
@@ -216,24 +273,39 @@
 
 <div class="status" id="status"></div>
 
+<div class="legend" id="legend" hidden></div>
+
 <div class="gridwrap" id="grid">
   <div class="gin">
     <div class="ghead" id="ghead"></div>
     <div class="cards" id="cards"></div>
   </div>
 </div>
+<div class="tip" id="tip" hidden></div>
 
-<div class="note">
-  The overview shows each place&rsquo;s local calendar days, starting with its today (a small italic date in a cell means
+<div class="note" id="noteGfx">
+  Graphic view: each row is a place&rsquo;s timeline at 24&nbsp;h per day in its own local time, so day columns line up and the crosshair marks the same
+  instant in every row. The top half of a strip is tinted by cloud cover (pale yellow clear, light gray half, dark gray overcast) and the bottom half by
+  temperature (blue cold to red hot). Bars are rain (blue) and snow (cyan) as liquid-water equivalent, scaled by the square root of the hourly
+  intensity so light rain stays visible, with the same scale in every row. A thin dark (light on the dark theme) line is the rolling 24-hour precipitation total, on one square-root scale for every row (top of the strip is
+  about 2&nbsp;in / 50&nbsp;mm). Nights are shaded, faint lines mark 6-hour steps, and an amber bar along the
+  bottom edge marks sustained 10&nbsp;m wind above 20&nbsp;mph (32&nbsp;km/h). Numbers above each day are the high/low, the precipitation total
+  (from 0.1&nbsp;in / 2.5&nbsp;mm) and any new snow. Hover a strip for the details; on touch screens tap a strip, and tap the place name to open its meteogram.
+</div>
+<div class="note" id="noteTbl">
+  Table view: the overview shows each place&rsquo;s local calendar days, starting with its today (a small italic date in a cell means
   that place&rsquo;s day differs from the column heading, which follows the first place). Cells show the daytime weather icon,
   high and low, total precipitation as liquid-water equivalent with the highest chance and a rain/snow bar, peak 10&nbsp;m wind with its
   prevailing direction (amber above 15&nbsp;mph / 25&nbsp;km/h, red above 25&nbsp;mph / 40&nbsp;km/h), new snow depth and the mean freezing level in daylight.
-  Click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
+</div>
+<div class="note">
+  Both views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
   total precipitation and snow, and the highest wind or high. Clicking a row opens its full meteogram.
-  Grouping files a place under its first activity tag. Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
+  Grouping files a place under its first activity tag. The meteogram&rsquo;s precipitation panel also draws the rolling 24-hour total (liquid-water equivalent, trailing 24&nbsp;h ending at each point,
+  computed from hourly data) on its own scale, labeled in the leftmost axis column. The precipitation bar and 24-hour scales are shared by every place (in the strips too), so a wetter place looks wetter. Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
   (Open-Meteo assumes about 0.7&nbsp;cm of snow per mm of water). Beyond 7 days the data are shown as 3-hour
   values (precipitation summed, precipitation probability at its maximum, other variables averaged).
-  At 14 and 16 days the shaded bands are the 10th&ndash;90th percentile spread of the 31-member NOAA GEFS ensemble.
+  At 14 and 16 days the shaded bands in the meteograms are the 10th&ndash;90th percentile spread of the 31-member NOAA GEFS ensemble.
   The red dashed line is the current time. Times are each place&rsquo;s local time; the crosshair marks the same instant on every chart.
 </div>
 
@@ -259,7 +331,7 @@ applyTheme();
 var MAX_PLACES = 30;
 var PLACES_KEY = 'meteogram.places';
 var UNITS_KEY = 'meteogram.units';
-var PREFS_KEY = 'meteogram.prefs';   // overview view settings: sort metric, tag filter, grouping
+var PREFS_KEY = 'meteogram.prefs';   // overview view settings: graphic/table, sort metric, tag filter, grouping
 var DEFAULT_PLACE = { lat: 40.7608, lon: -111.8910, label: 'Salt Lake City, UT' };
 var RANGES = [3, 5, 7, 14, 16];
 var DEFAULT_DAYS = 7;
@@ -278,15 +350,38 @@ var PRECIP_FULL_MM = 15;        // daily liquid-water equivalent that gives the 
 var SNOW_FULL_CM = 30;          // daily new snow that gives the darkest snow shade
 var TEMP_TINT_C = [-20, 35];    // daily temperatures mapped from blue to red
 var SORTS = [['dry', 'Driest'], ['calm', 'Calmest'], ['warm', 'Warmest'], ['cool', 'Coolest'], ['snow', 'Most new snow']];
+var VIEWS = ['graphic', 'table'];   // overview styles; the first is the default
+var KMH_PER_MPH = 1.609344;
+var PAST_DAYS = 1;              // extra day requested before today, only to seed the rolling 24 h precipitation window
+var ROLL_HOURS = 24;            // rolling precipitation window
+var ROLL_FULL_MM = 50;          // graphic view: the 24 h total line reaches the top of the lane at this (about 2 in), sqrt scale
+var ROLL_MIN_MM = 0.05;         // smaller 24 h totals are not drawn (line breaks)
+var WIND_MARK_MPH = 20;         // graphic view: sustained 10 m wind above this gets the amber marker (physical threshold, shown converted)
+var STRIP_RAIN_FULL_MM_H = 4;   // graphic view: a bar reaches full height at this liquid-equivalent rate (mm per hour)
+var STRIP_PRECIP_MIN_MM = 0.02; // graphic view: smaller bin totals draw no bar
+var MIN_SPPH = { short: 4.5, long: 3.25 };   // narrowest strip, px per hour (ranges up to HOURLY_MAX_DAYS / longer)
+var FLIP_MS = 380;              // row re-sort animation
+var STRIP = { h: 49, numY: 10, tintTop: 13, tintMid: 31, barBase: 45, barMax: 30 };   // strip layout, CSS px: the top 13 px hold the daily numbers
+// Temperature tint stops (degC): cool blue -> neutral -> warm red (coolwarm-like diverging scale).
+// TINT = lane fills, LINE = number colors; each tuned per theme.
+var TEMP_STOPS_C = [-25, -10, 0, 12, 22, 32, 42];
+var TINT = {
+  light: ['#3b4cc0', '#6788ee', '#9abbff', '#dddcdc', '#f7b89c', '#e8765c', '#b40426'],
+  dark:  ['#2b3a94', '#3a58b8', '#47699f', '#454b54', '#8f5646', '#b9463a', '#8e1022']
+};
+var LINE = {
+  light: ['#3b4cc0', '#3f66d8', '#2f78c4', '#6e7781', '#d4651f', '#cc3a24', '#a00020'],
+  dark:  ['#7f93ff', '#7da0ff', '#7cc0ff', '#c9d1d9', '#ffb27a', '#ff7a5c', '#ff5252']
+};
 var REFRESH_MS = 36e5;          // data older than this is reloaded while the tab is visible
-var AXIS_W = 62;                // pinned y-axis column, px
+var AXIS_W = 92;                // pinned y-axis column, px
 var MIN_PX_PER_HOUR = 5;        // narrowest readable chart: 120 px per day
 var ICON_MIN_PX = 32, ARROW_MIN_PX = 28;   // minimum spacing of icons / wind arrows
 var FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 var ENSEMBLE_URL = 'https://ensemble-api.open-meteo.com/v1/ensemble';
 var HOURLY_VARS = ['temperature_2m', 'apparent_temperature', 'relative_humidity_2m', 'dew_point_2m',
   'precipitation', 'rain', 'showers', 'snowfall', 'precipitation_probability', 'weather_code',
-  'freezing_level_height', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high',
+  'freezing_level_height', 'cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high',
   'sunshine_duration', 'wind_speed_10m', 'wind_direction_10m', 'is_day'];
 
 // Data are always requested in SI-ish units (degC, km/h, mm, cm, m) and converted
@@ -295,16 +390,16 @@ var UNITS = {
   imperial: {
     temp:   { f: function(c) { return c * 9 / 5 + 32; }, u: '°F' },
     wind:   { f: function(k) { return k * 0.621371; }, u: 'mph', warn: 15, high: 25 },
-    precip: { f: function(m) { return m / 25.4; }, u: 'in', dp: 2, min: 0.1 },
-    snow:   { f: function(c) { return c / 2.54; }, u: 'in', dp: 1 },
+    precip: { f: function(m) { return m / 25.4; }, u: 'in', sym: '″', dp: 2, min: 0.1, dayMin: 0.1 },
+    snow:   { f: function(c) { return c / 2.54; }, u: 'in', sym: '″', dp: 1 },
     height: { f: function(m) { return m * 3.28084; }, u: 'ft' },
     hour12: true
   },
   metric: {
     temp:   { f: function(c) { return c; }, u: '°C' },
     wind:   { f: function(k) { return k; }, u: 'km/h', warn: 25, high: 40 },
-    precip: { f: function(m) { return m; }, u: 'mm', dp: 1, min: 2 },
-    snow:   { f: function(c) { return c; }, u: 'cm', dp: 1 },
+    precip: { f: function(m) { return m; }, u: 'mm', sym: 'mm', dp: 1, min: 2, dayMin: 2.5 },
+    snow:   { f: function(c) { return c; }, u: 'cm', sym: 'cm', dp: 1 },
     height: { f: function(m) { return m; }, u: 'm' },
     hour12: false
   }
@@ -349,7 +444,7 @@ var LEGENDS = {
   icons:  [['wx', '', null]],
   temp:   [['temp', 'Temperature', 'temp'], ['app', 'Feels like', 'app']],
   hum:    [['rh', 'Humidity', 'hum'], ['dew', 'Dew point', 'dew']],
-  precip: [['rain', 'Rain', 'rain', 'box'], ['snow', 'Snow', 'snow', 'box'], ['prob', 'Chance', 'prob']],
+  precip: [['rain', 'Rain', 'rain', 'box'], ['snow', 'Snow', 'snow', 'box'], ['prob', 'Chance', 'prob'], ['roll', '24 h total', 'roll']],
   frz:    [['frz', 'Freezing level', 'frz']],
   cloud:  [['ch', 'High', 'cloud', 'box'], ['cm', 'Mid', 'cloud', 'box'], ['cl', 'Low', 'cloud', 'box'], ['sun', 'Sunshine', 'sun', 'box']],
   wind:   [['ws', 'Wind', 'wind'], ['dir', 'From', null]]
@@ -365,14 +460,14 @@ function pal() {
     night: 'rgba(31,35,40,0.07)', grid: 'rgba(99,108,118,0.22)', day: 'rgba(99,108,118,0.45)',
     temp: '#D55E00', app: '#CC79A7', hum: '#0072B2', dew: '#009E73',
     rain: '#0072B2', snow: '#9ccbea', snowEdge: '#4f94c4', prob: '#7b4fc9', frz: '#0072B2',
-    cloud: '#57606a', sun: '#E69F00', wind: '#0969da',
+    cloud: '#57606a', sun: '#E69F00', wind: '#0969da', roll: '#0a1a4a', rollHalo: 'rgba(255,255,255,0.85)',
     sunIcon: '#e69f00', moonIcon: '#8c959f', cloudIcon: '#a8b1ba', cloudDark: '#6e7781', bolt: '#d4a72c'
   } : {
     text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), danger: v('--danger'),
     night: 'rgba(255,255,255,0.05)', grid: 'rgba(139,148,158,0.22)', day: 'rgba(139,148,158,0.5)',
     temp: '#E69F00', app: '#CC79A7', hum: '#56B4E9', dew: '#2DBE8C',
     rain: '#56B4E9', snow: '#e6edf3', snowEdge: '#9fb3c8', prob: '#b18cf0', frz: '#56B4E9',
-    cloud: '#c9d1d9', sun: '#e8c23c', wind: '#58a6ff',
+    cloud: '#c9d1d9', sun: '#e8c23c', wind: '#58a6ff', roll: '#ffffff', rollHalo: 'rgba(13,17,23,0.85)',
     sunIcon: '#f0b429', moonIcon: '#c9d1d9', cloudIcon: '#8b949e', cloudDark: '#6e7681', bolt: '#f0c53d'
   };
 }
@@ -386,6 +481,8 @@ var cursorT = null;       // hovered instant (ms since epoch), shared by all car
 var viewT = null;         // instant at the left edge of the last-scrolled card
 var searchSeq = 0;
 var pending = 0;
+var VIEW = VIEWS[0];      // overview style: 'graphic' strips or 'table' text cells
+var SPPH = MIN_SPPH.short;   // strip pixels per hour (graphic view)
 var SORT = 'dry';         // ranking metric
 var TAGFILTER = [];       // selected activity tags (empty = show all places)
 var GROUP = false;        // group rows under each place's first tag
@@ -585,11 +682,12 @@ function loadPrefs() {
     if (SORTS.some(function(x) { return x[0] === o.sort; })) SORT = o.sort;
     TAGFILTER = cleanTags(o.tags);
     GROUP = o.group === true;
+    if (VIEWS.indexOf(o.view) >= 0) VIEW = o.view;
   } catch (e) {}
 }
 
 function savePrefs() {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP })); } catch (e) {}
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP, view: VIEW })); } catch (e) {}
 }
 
 function loadSavedUnits() {
@@ -628,6 +726,7 @@ function removePlace(p) {
   savePlaces();
   setStatus('');
   renderHeader();
+  PLACES.forEach(renderCard);   // the shared precipitation scale may shrink
   applyOrder();
   updateStamp();
 }
@@ -737,7 +836,7 @@ function pump() {
 function forecastUrl(p) {
   return FORECAST_URL + '?latitude=' + p.lat + '&longitude=' + p.lon +
     '&hourly=' + HOURLY_VARS.join(',') + '&daily=sunrise,sunset' +
-    '&timezone=auto&forecast_days=' + FETCH_DAYS + '&timeformat=unixtime' +
+    '&timezone=auto&forecast_days=' + FETCH_DAYS + '&past_days=' + PAST_DAYS + '&timeformat=unixtime' +
     '&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm';
 }
 
@@ -775,10 +874,24 @@ function parseForecast(j, p) {
     h.snowWE.push(we);
     h.rainW.push(pr == null ? null : Math.max(0, pr - (we || 0)));
   }
+  // Rolling 24 h liquid-equivalent total (the sum the bars show) at every hourly stamp: the 24 hours ending at it.
+  // Computed on the full hourly data, then the past day (requested only for this) is cut off so everything
+  // else starts at the place's today 00:00.
+  h.roll24 = rollingTotal(h.rainW, h.snowWE);
+  var d0 = j.daily || {}, seed = 0;
+  if (PAST_DAYS && Array.isArray(d0.time) && d0.time.length > FETCH_DAYS) {
+    var today = d0.time[PAST_DAYS] * 1000;
+    while (seed < n && h.time[seed] < today) seed++;
+  }
+  if (seed) {
+    Object.keys(h).forEach(function(k) { h[k] = h[k].slice(seed); });
+    n -= seed;
+  }
   // sun-up intervals from daily sunrise/sunset; null if any day lacks them (polar)
   var d = j.daily || {}, ups = [], ok = Array.isArray(d.sunrise) && Array.isArray(d.sunset) && d.sunrise.length > 0;
+  var dOff = seed ? PAST_DAYS : 0;   // daily arrays carry the past day too
   if (ok) {
-    for (var k = 0; k < d.sunrise.length; k++) {
+    for (var k = dOff; k < d.sunrise.length; k++) {
       var r = d.sunrise[k], s = d.sunset[k];
       if (typeof r !== 'number' || typeof s !== 'number' || s <= r) { ok = false; break; }
       ups.push([r * 1000, s * 1000]);
@@ -787,6 +900,20 @@ function parseForecast(j, p) {
   var zone = { tz: j.timezone || null, off: j.utc_offset_seconds || 0 };
   p.zone = zone;
   return { time: h.time, h: h, ups: ok ? ups : null, elev: j.elevation, zone: zone, n: n };
+}
+
+// Trailing ROLL_HOURS-hour sum of rain + snow water equivalent ending at each stamp (mm); a window that
+// starts before the data is partial, one with no valid hours is null
+function rollingTotal(rain, snow) {
+  var out = [], sum = 0, cnt = 0, hr = [], i;
+  for (i = 0; i < rain.length; i++) {
+    var v = rain[i] == null && snow[i] == null ? null : (rain[i] || 0) + (snow[i] || 0);
+    hr.push(v);
+    if (v != null) { sum += v; cnt++; }
+    if (i >= ROLL_HOURS && hr[i - ROLL_HOURS] != null) { sum -= hr[i - ROLL_HOURS]; cnt--; }
+    out.push(cnt ? Math.max(0, sum) : null);
+  }
+  return out;
 }
 
 // Ensemble members for temperature and precipitation, indexed by timestamp
@@ -836,9 +963,9 @@ function loadPlace(p) {
       if (seq === p.seq) {
         renderCardState(p);
         renderRow(p);
-        renderCard(p);
+        PLACES.forEach(renderCard);   // new data can change the shared precipitation scale
         renderHeader();
-        applyOrder();
+        applyOrder(true);
         updateStamp();
         if (p.status === 'ok' && p.open && (DAYS >= ENS_MIN_DAYS || p.ens)) loadEnsemble(p);
       }
@@ -940,7 +1067,7 @@ function buildSeries(p) {
   var nH = Math.min(DAYS * 24, p.data.n);
   var n = Math.floor(nH / step);
   var S = { step: step, n: n, hours: n * step, t: [], i0: [], temp: [], app: [], rh: [], dew: [], rain: [], snowWE: [],
-            snowCm: [], precip: [], prob: [], frz: [], cl: [], cm: [], ch: [], sun: [], ws: [], dir: [],
+            snowCm: [], precip: [], roll: [], prob: [], frz: [], cloud: [], cl: [], cm: [], ch: [], sun: [], ws: [], dir: [],
             code: [], day: [] };
   for (var b = 0; b < n; b++) {
     var i0 = b * step, i1 = i0 + step;
@@ -953,8 +1080,10 @@ function buildSeries(p) {
     S.snowWE.push(agg(h.snowWE, i0, i1, 'sum'));
     S.snowCm.push(agg(h.snowfall, i0, i1, 'sum'));
     S.precip.push(agg(h.precipitation, i0, i1, 'sum'));
+    S.roll.push(h.roll24[i1 - 1]);   // 24 h total ending at the bin's last hour
     S.prob.push(agg(h.precipitation_probability, i0, i1, 'max'));
     S.frz.push(agg(h.freezing_level_height, i0, i1, 'mean'));
+    S.cloud.push(agg(h.cloud_cover, i0, i1, 'mean'));
     S.cl.push(agg(h.cloud_cover_low, i0, i1, 'mean'));
     S.cm.push(agg(h.cloud_cover_mid, i0, i1, 'mean'));
     S.ch.push(agg(h.cloud_cover_high, i0, i1, 'mean'));
@@ -1091,6 +1220,21 @@ function range(arrs) {
 
 function mapArr(a, kind) { return a.map(function(v) { return cv(kind, v); }); }
 
+// Largest hourly (or 3-hourly) precipitation and 24 h total (mm) across all loaded places in the current
+// range. Ensemble bands are left out so opening a place never rescales the others; they clip at the top.
+function sharedPrecip() {
+  var bar = 0, roll = 0;
+  PLACES.forEach(function(p) {
+    if (!p.data) return;
+    var S = buildSeries(p);
+    for (var i = 0; i < S.n; i++) {
+      bar = Math.max(bar, (S.rain[i] || 0) + (S.snowWE[i] || 0));
+      if (S.roll[i] != null) roll = Math.max(roll, S.roll[i]);
+    }
+  });
+  return { bar: bar, roll: roll };
+}
+
 function computeScales(S, E) {
   var sc = {};
   var tr = range([mapArr(S.temp, 'temp'), mapArr(S.app, 'temp'),
@@ -1103,13 +1247,10 @@ function computeScales(S, E) {
   var dlo = Math.floor(dr[0] / dstep) * dstep;
   while (dlo + 2 * dstep < dr[1]) dstep *= 2, dlo = Math.floor(dr[0] / dstep) * dstep;
   sc.dew = { lo: dlo, hi: dlo + 2 * dstep, step: dstep };
-  var bars = [];
-  for (var i = 0; i < S.n; i++) {
-    bars.push(cv('precip', (S.rain[i] || 0) + (S.snowWE[i] || 0)));
-    if (E && E.pHi[i] != null) bars.push(cv('precip', E.pHi[i]));
-  }
-  var pmax = Math.max(U().precip.min, range([bars]) ? range([bars])[1] : 0);
-  sc.precip = niceScale(0, pmax * 1.1, 3);
+  // precipitation bars and the 24 h line use scales shared by every place, so wetter places look wetter
+  var sh = sharedPrecip();
+  sc.precip = niceScale(0, Math.max(U().precip.min, cv('precip', sh.bar)) * 1.1, 3);
+  sc.roll = niceScale(0, Math.max(U().precip.min, cv('precip', sh.roll)) * 1.05, 3);
   var fr = range([mapArr(S.frz, 'height')]);
   sc.frz = niceScale(Math.min(0, fr ? fr[0] : 0), fr ? Math.max(fr[1], 1) : 1, 3);
   var wr = range([mapArr(S.ws, 'wind')]);
@@ -1497,7 +1638,7 @@ function drawPrecip(ctx, actx, g) {
   for (i = 0; i < S.n; i++) {
     var xa = xOfT(g, S.t[i] - HOUR_MS), xw = bw - gap;
     if (E && E.pLo[i] != null && E.pHi[i] != null) {
-      var ya = panelY(pn, sc, cv('precip', E.pHi[i])), yb = panelY(pn, sc, cv('precip', E.pLo[i]));
+      var ya = Math.max(pn.top, panelY(pn, sc, cv('precip', E.pHi[i]))), yb = panelY(pn, sc, cv('precip', E.pLo[i]));
       ctx.fillStyle = alpha(P.rain, 0.22);
       ctx.fillRect(xa, ya, xw, Math.max(1, yb - ya));
     }
@@ -1514,10 +1655,15 @@ function drawPrecip(ctx, actx, g) {
   // chance of precipitation, 0-100% over the panel height
   var ps = { lo: 0, hi: 100 };
   strokeLine(ctx, g.lx, S.prob.map(function(v) { return v == null ? null : panelY(pn, ps, v); }), P.prob, 1.5);
+  // rolling 24 h total on its own linear scale (labels in the left axis, third column), drawn at each bin's last hour
+  var rs = g.sc.roll, rx = S.t.map(function(t) { return xOfT(g, t + (S.step - 1) * HOUR_MS); });
+  strokeLine(ctx, rx, S.roll.map(function(v) { v = cv('precip', v); return v == null ? null : panelY(pn, rs, v); }), P.rollHalo, 4);
+  strokeLine(ctx, rx, S.roll.map(function(v) { v = cv('precip', v); return v == null ? null : panelY(pn, rs, v); }), P.roll, 2);
   actx.font = '10px system-ui';
   var dp = tickDp(sc.step);
   sc.ticks.forEach(function(v) { axisText(actx, v.toFixed(dp), AXIS_W - 6, panelY(pn, sc, v), P.muted); });
   [0, 50, 100].forEach(function(v) { axisText(actx, v + '%', AXIS_W - 36, panelY(pn, ps, v), P.prob); });
+  rs.ticks.forEach(function(v) { axisText(actx, v.toFixed(tickDp(rs.step)), AXIS_W - 66, panelY(pn, rs, v), P.roll); });
   axisText(actx, U().precip.u, AXIS_W - 6, pn.top - 8, P.muted);
 }
 
@@ -1615,6 +1761,7 @@ function readout(p, i) {
   r.rain = S.rain[i] == null ? '–' : fv(cv('precip', S.rain[i]), u.precip.dp) + ' ' + u.precip.u;
   r.snow = S.snowCm[i] == null ? '–' : fv(cv('snow', S.snowCm[i]), u.snow.dp) + ' ' + u.snow.u;
   r.prob = pc(S.prob[i]);
+  r.roll = S.roll[i] == null ? '–' : fv(cv('precip', S.roll[i]), u.precip.dp) + ' ' + u.precip.u;
   r.frz = S.frz[i] == null ? '–' : Math.round(cv('height', S.frz[i])).toLocaleString() + ' ' + u.height.u;
   r.ch = pc(S.ch[i]); r.cm = pc(S.cm[i]); r.cl = pc(S.cl[i]);
   r.sun = S.sun[i] == null ? '–' : Math.round(S.sun[i] / 60) + ' of ' + (60 * S.step) + ' min';
@@ -1650,7 +1797,10 @@ function updateCursorFor(p) {
   for (k in p.vals) p.vals[k].textContent = r[k];
 }
 
-function updateCursor() { PLACES.forEach(updateCursorFor); }
+function updateCursor() {
+  PLACES.forEach(function(p) { updateCursorFor(p); updateStripCursor(p); });
+  if (cursorT == null) hideTip();
+}
 
 function updateNow(p) {
   var L = p.layout;
@@ -1697,11 +1847,12 @@ function pointerT(p, ev) {
 function onPointer(p, ev) {
   if (!p.layout) return;
   cursorT = pointerT(p, ev);
+  hideTip();
   updateCursor();
 }
 
 document.addEventListener('pointerdown', function(ev) {
-  if (cursorT != null && ev.pointerType !== 'mouse' && !(ev.target.closest && ev.target.closest('.scroller'))) {
+  if (cursorT != null && ev.pointerType !== 'mouse' && !(ev.target.closest && ev.target.closest('.scroller, .strip'))) {
     cursorT = null;
     updateCursor();
   }
@@ -1756,6 +1907,338 @@ function endDrag() {
   renderHeader();
 }
 
+// ── Graphic view: one timeline strip per place ─────────────────────────────
+function parseHex(h) { var n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function rgbStr(a) { return 'rgb(' + a[0] + ',' + a[1] + ',' + a[2] + ')'; }
+
+// Interpolated color for a temperature (degC) from a list of stops at TEMP_STOPS_C; null if missing
+function lerpStops(stops, c) {
+  if (c == null || !isFinite(c)) return null;
+  var xs = TEMP_STOPS_C;
+  if (c <= xs[0]) return parseHex(stops[0]);
+  if (c >= xs[xs.length - 1]) return parseHex(stops[stops.length - 1]);
+  for (var i = 1; i < xs.length; i++) {
+    if (c <= xs[i]) {
+      var t = (c - xs[i - 1]) / (xs[i] - xs[i - 1]), a = parseHex(stops[i - 1]), b = parseHex(stops[i]);
+      return [0, 1, 2].map(function(k) { return Math.round(a[k] + (b[k] - a[k]) * t); });
+    }
+  }
+  return parseHex(stops[stops.length - 1]);
+}
+
+function tintColor(c, P) { var a = lerpStops(P.tint, c); return a ? rgbStr(a) : 'transparent'; }
+function lineColor(c, P) { var a = lerpStops(P.line, c); return a ? rgbStr(a) : P.muted; }
+
+// Cloud cover 0-100 % -> color between the palette's clear / half / overcast stops
+function cloudColor(c, P) {
+  if (c == null || !isFinite(c)) return 'transparent';
+  var st = P.cloudStops, t = clamp(c, 0, 100) / 50, k = t >= 1 ? 1 : 0;
+  var a = parseHex(st[k]), b = parseHex(st[k + 1]), f = t - k;
+  return rgbStr([0, 1, 2].map(function(j) { return Math.round(a[j] + (b[j] - a[j]) * f); }));
+}
+
+// Chart palette plus the strip-only colors (bars sit on tinted lanes, so they differ from the meteogram's)
+function stripPal() {
+  var P = pal(), light = document.documentElement.classList.contains('light');
+  var X = light ? {
+    night: 'rgba(31,35,60,0.10)', nightB: 'rgba(15,25,70,0.24)', grid: 'rgba(99,108,118,0.16)',
+    rainBar: '#0969da', snowBar: '#22c3e6', rainText: '#0550ae', snowText: '#0e7490', windMark: '#bf8700', halo: 'rgba(255,255,255,0.85)',
+    rollLine: '#0a1a4a', tint: TINT.light, line: LINE.light, tickText: '#57606a', cloudStops: ['#ffe58f', '#d0d4d9', '#8c959f']
+  } : {
+    night: 'rgba(255,255,255,0.07)', nightB: 'rgba(0,0,0,0.30)', grid: 'rgba(139,148,158,0.18)',
+    rainBar: '#4c9aff', snowBar: '#c6f3ff', rainText: '#79b8ff', snowText: '#9be9ff', windMark: '#e3a008', halo: 'rgba(13,17,23,0.85)',
+    rollLine: '#ffffff', tint: TINT.dark, line: LINE.dark, tickText: '#8b949e', cloudStops: ['#8a6d1c', '#4a5059', '#2b3038']
+  };
+  for (var k in X) P[k] = X[k];
+  return P;
+}
+
+function sxOf(g, t) { return (t - g.x0) / HOUR_MS * SPPH; }
+
+function drawStrip(p, P) {
+  var e = p.el, S = buildSeries(p);
+  if (!S.n) { p.sg = null; return; }
+  var W = Math.round(DAYS * 24 * SPPH), H = STRIP.h;
+  var g = { p: p, S: S, P: P, W: W, H: H, x0: S.t[0] };
+  p.sg = { S: S, x0: g.x0, W: W };
+  var ctx = setupCanvas(e.scanvas, W, H);
+  e.scanvas.setAttribute('aria-label', p.label + ' forecast strip');
+  var x1 = g.x0 + S.hours * HOUR_MS, i;
+
+  drawStripTint(ctx, g);
+  ctx.fillStyle = P.nightB;
+  nightSpans(p, S, g.x0, x1).forEach(function(sp) {
+    var a = sxOf(g, sp[0]), b = sxOf(g, sp[1]);
+    ctx.fillRect(a, 0, b - a, H);
+  });
+  // faint 6 h gridlines, stronger day boundaries
+  var days = p.data.days;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = P.grid;
+  ctx.beginPath();
+  for (i = 0; i < days.length; i++) {
+    if (days[i].t >= x1) break;
+    for (var q = 1; q < 4; q++) {
+      var xg = Math.round(sxOf(g, days[i].t) + q * 6 * SPPH) + 0.5;
+      ctx.moveTo(xg, STRIP.tintTop); ctx.lineTo(xg, H);
+    }
+  }
+  ctx.stroke();
+  ctx.strokeStyle = P.day;
+  ctx.beginPath();
+  for (i = 1; i < days.length; i++) {
+    if (days[i].t >= x1) break;
+    var xd = Math.round(sxOf(g, days[i].t)) + 0.5;
+    ctx.moveTo(xd, 0); ctx.lineTo(xd, H);
+  }
+  ctx.stroke();
+
+  drawStripBars(ctx, g);
+  drawStripRoll(ctx, g);
+  drawStripWind(ctx, g);
+  drawStripDaily(ctx, g);
+}
+
+// Top half tinted by cloud cover (clear -> overcast), bottom half by temperature, one block per sample
+function drawStripTint(ctx, g) {
+  var S = g.S, bw = S.step * SPPH;
+  for (var i = 0; i < S.n; i++) {
+    var x = sxOf(g, S.t[i]);
+    ctx.fillStyle = cloudColor(S.cloud[i], g.P);
+    ctx.fillRect(x, STRIP.tintTop, bw + 0.6, STRIP.tintMid - STRIP.tintTop);
+    ctx.fillStyle = tintColor(S.temp[i], g.P);
+    ctx.fillRect(x, STRIP.tintMid, bw + 0.6, g.H - STRIP.tintMid);
+  }
+}
+
+// Precipitation: rain at the bottom, snow water equivalent stacked above, on a 1 px halo.
+// Height = sqrt of intensity so drizzle is visible; same scale in every row.
+function drawStripBars(ctx, g) {
+  var S = g.S, P = g.P, bw = S.step * SPPH, w = Math.max(1, bw - (bw > 5 ? 1 : 0));
+  for (var i = 0; i < S.n; i++) {
+    var rain = S.rain[i] || 0, snow = S.snowWE[i] || 0, tot = rain + snow;
+    if (tot < STRIP_PRECIP_MIN_MM) continue;
+    var rate = tot / S.step;
+    var ht = Math.max(1.5, STRIP.barMax * Math.sqrt(Math.min(1, rate / STRIP_RAIN_FULL_MM_H)));
+    var hr = ht * rain / tot, hs = ht - hr;
+    var xa = sxOf(g, S.t[i] - HOUR_MS);           // precipitation is a preceding-hour total
+    ctx.fillStyle = P.halo; ctx.fillRect(xa - 1, STRIP.barBase - ht - 1, w + 2, ht + 2);
+    if (hr > 0) { ctx.fillStyle = P.rainBar; ctx.fillRect(xa, STRIP.barBase - hr, w, hr); }
+    if (hs > 0) { ctx.fillStyle = P.snowBar; ctx.fillRect(xa, STRIP.barBase - ht, w, hs); }
+  }
+}
+
+// Rolling 24 h total as a line over the bars on one fixed sqrt scale (ROLL_FULL_MM = top of the lane), same in every row.
+// It is not drawn where the total is below ROLL_MIN_MM, so dry stretches stay clean. A haloed line stays readable on any tint.
+function drawStripRoll(ctx, g) {
+  var S = g.S, P = g.P, top = STRIP.tintTop + 2, bot = g.H - 2, pen = false, px = 0, py = 0, lone = true;
+  function y(v) { return bot - (bot - top) * Math.sqrt(Math.min(1, v / ROLL_FULL_MM)); }
+  [[P.halo, 4], [P.rollLine, 1.5]].forEach(function(st) {
+    ctx.strokeStyle = st[0]; ctx.fillStyle = st[0]; ctx.lineWidth = st[1]; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    pen = false;
+    ctx.beginPath();
+    for (var i = 0; i < S.n; i++) {
+      var v = S.roll[i];
+      if (v == null || v < ROLL_MIN_MM) { pen = false; continue; }
+      var x = sxOf(g, S.t[i] + (S.step - 1) * HOUR_MS), yy = y(v);
+      if (pen) ctx.lineTo(x, yy); else { ctx.moveTo(x, yy); ctx.lineTo(x + 0.01, yy); }   // lone samples still show as a dot
+      pen = true;
+    }
+    ctx.stroke();
+  });
+}
+
+// Subtle sustained-wind marker along the bottom edge (mean wind of the sample, no gusts)
+function drawStripWind(ctx, g) {
+  var S = g.S, P = g.P, thr = WIND_MARK_MPH * KMH_PER_MPH, bw = S.step * SPPH;
+  for (var i = 0; i < S.n; i++) {
+    var v = S.ws[i];
+    if (v == null || v <= thr) continue;
+    var xa = sxOf(g, S.t[i]);
+    ctx.fillStyle = P.halo; ctx.fillRect(xa, g.H - 4, bw + 0.5, 1);
+    ctx.fillStyle = P.windMark; ctx.fillRect(xa, g.H - 3, bw + 0.5, 3);
+  }
+}
+
+function fmtNum(v, dp) { return v.toFixed(dp).replace(/\.0+$/, ''); }
+
+function stripPrecipText(v) {   // v in display units
+  var u = U().precip, dp = UNIT === 'imperial' ? (v < 1 ? 2 : 1) : (v < 10 ? 1 : 0);
+  return v.toFixed(dp) + u.sym;
+}
+
+function stripSnowText(v) {
+  var u = U().snow, r = Math.round(v * 10) / 10;
+  return (r < 0.1 ? '<0.1' : fmtNum(r, 1)) + u.sym;
+}
+
+// Visible numbers: high/low (always), precipitation total (from UNITS.precip.dayMin), new snow (> 0).
+// When a day column is too narrow the precipitation total goes first, then whatever no longer fits.
+function drawStripDaily(ctx, g) {
+  var p = g.p, P = g.P, daily = p.data.daily, days = p.data.days, maxT = g.x0 + g.S.hours * HOUR_MS, u = U();
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  for (var d = 0; d < days.length; d++) {
+    if (days[d].t >= maxT) break;
+    var st = daily[d], xs = sxOf(g, days[d].t) + 4;
+    var xe = sxOf(g, d + 1 < days.length ? Math.min(days[d + 1].t, maxT) : maxT) - 2;
+    var avail = xe - xs;
+    var hiT = st.hi == null ? '–' : String(Math.round(cv('temp', st.hi)));
+    var loT = st.lo == null ? '–' : '/' + Math.round(cv('temp', st.lo));
+    ctx.font = '700 11px system-ui';
+    var wHi = ctx.measureText(hiT).width;
+    ctx.font = '10px system-ui';
+    var wLo = ctx.measureText(loT).width;
+    ctx.font = '700 11px system-ui';
+    ctx.fillStyle = st.hi == null ? P.muted : lineColor(st.hi, P);
+    ctx.fillText(hiT, xs, STRIP.numY);
+    ctx.font = '10px system-ui';
+    ctx.fillStyle = st.lo == null ? P.muted : lineColor(st.lo, P);
+    ctx.fillText(loT, xs + wHi, STRIP.numY);
+    var x = xs + wHi + wLo + 5;
+    var pv = st.total == null ? 0 : cv('precip', st.total);
+    var items = [];
+    if (pv >= u.precip.dayMin - 1e-9) items.push({ t: stripPrecipText(pv), c: P.rainText });
+    if (st.snowCm != null && st.snowCm > 0) items.push({ t: stripSnowText(cv('snow', st.snowCm)), c: P.snowText });
+    ctx.font = '700 10.5px system-ui';
+    items.forEach(function(it) { it.w = ctx.measureText(it.t).width; });
+    var need = items.reduce(function(sum, it) { return sum + it.w + 4; }, 0);
+    if (x - xs + need > avail && items.length === 2) items = [items[1]];   // keep new snow if only one fits
+    items.forEach(function(it) {
+      if (x + it.w - xs > avail) return;
+      ctx.fillStyle = it.c;
+      ctx.fillText(it.t, x, STRIP.numY);
+      x += it.w + 4;
+    });
+  }
+}
+
+// Highlight band over the ranked days, in each place's own local days
+function placeBand(p) {
+  var b = p.el.band, sg = p.sg;
+  if (VIEW !== 'graphic' || !TARGET || !p.data || !sg) { b.hidden = true; return; }
+  var days = p.data.days;
+  if (TARGET.a >= days.length) { b.hidden = true; return; }
+  var g = { x0: sg.x0 };
+  var xa = sxOf(g, days[TARGET.a].t);
+  var xb = TARGET.b + 1 < days.length ? sxOf(g, days[TARGET.b + 1].t) : sg.W;
+  b.style.left = Math.round(xa) + 'px';
+  b.style.width = Math.max(2, Math.round(xb - xa)) + 'px';
+  b.hidden = false;
+}
+
+function placeBands() { PLACES.forEach(placeBand); }
+
+// Hover / tap readout: the sample (hour or 3 h bin) containing instant ms
+function binAt(p, ms) {
+  var S = p.sg && p.sg.S;
+  if (!S || !S.n) return -1;
+  var i = Math.floor((ms - S.t[0]) / (S.step * HOUR_MS));
+  return i < 0 || i >= S.n ? -1 : i;
+}
+
+function tipHtml(p, ms) {
+  var i = binAt(p, ms);
+  if (i < 0) return '';
+  var S = p.sg.S, u = U(), w = zparts(p, S.t[i]);
+  var tm = WD[w.wd] + ' ' + MON[w.mo - 1] + ' ' + w.d + ', ' + clockLabel(w);
+  if (S.step > 1) tm += ' – ' + clockLabel(zparts(p, S.t[i] + S.step * HOUR_MS));
+  tm += ' ' + zoneAbbr(p, S.t[i]);
+  var wm = WMO[S.code[i]], cond = wm ? wm[0] : (S.code[i] == null ? '–' : 'Code ' + S.code[i]);
+  var pu = function(v) { return v == null ? '–' : fv(cv('precip', v), u.precip.dp); };
+  var t = S.temp[i] == null ? '–' : fv(cv('temp', S.temp[i]), 0) + u.temp.u;
+  var sn = S.snowCm[i] == null ? '–' : fv(cv('snow', S.snowCm[i]), u.snow.dp) + ' ' + u.snow.u;
+  var ws = S.ws[i] == null ? '–' : Math.round(cv('wind', S.ws[i])) + ' ' + u.wind.u + (S.dir[i] == null ? '' : ' ' + COMPASS[Math.round(S.dir[i] / 22.5) % 16]);
+  var cl = S.cloud[i] == null ? '–' : Math.round(S.cloud[i]) + '%';
+  var pb = S.prob[i] == null ? '–' : Math.round(S.prob[i]) + '%';
+  function row(a, b) { return '<div class="r"><span>' + a + '</span><span>' + b + '</span></div>'; }
+  return '<b>' + esc(p.label) + '</b><div class="tm">' + esc(tm) + (S.step > 1 ? ' (' + S.step + ' h mean/total)' : '') + '</div>' +
+    '<div class="t0"><b>' + esc(t) + '</b> · ' + esc(cond) + '</div>' +
+    row('Precip', pu(S.precip[i]) + ' ' + u.precip.u + ' (rain ' + pu(S.rain[i]) + ', snow ' + pu(S.snowWE[i]) + ' w.e.)') +
+    row('New snow', sn) + row('24h total', S.roll[i] == null ? '–' : pu(S.roll[i]) + ' ' + u.precip.u) + row('Chance', pb) + row('Wind', ws) + row('Cloud', cl);
+}
+
+function showTip(p, ev) {
+  var tip = document.getElementById('tip');
+  var html = cursorT == null ? '' : tipHtml(p, cursorT);
+  if (!html) { tip.hidden = true; return; }
+  tip.innerHTML = html;
+  tip.hidden = false;
+  var r = tip.getBoundingClientRect();
+  var x = ev.clientX + 14, y = ev.clientY - r.height - 12;
+  if (x + r.width > window.innerWidth - 6) x = ev.clientX - r.width - 14;
+  x = clamp(x, 6, Math.max(6, window.innerWidth - r.width - 6));
+  if (y < 6) y = ev.clientY + 18;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function hideTip() { document.getElementById('tip').hidden = true; }
+
+function updateStripCursor(p) {
+  var c = p.el.cur, sg = p.sg;
+  if (VIEW !== 'graphic' || cursorT == null || !sg) { c.hidden = true; return; }
+  var x = (cursorT - sg.x0) / HOUR_MS * SPPH;
+  if (x < 0 || x > sg.W) { c.hidden = true; return; }
+  c.hidden = false;
+  c.style.left = Math.round(x) + 'px';
+}
+
+function stripPointer(p, ev) {
+  if (!p.sg) return;
+  var r = p.el.strip.getBoundingClientRect();
+  cursorT = p.sg.x0 + (ev.clientX - r.left) / SPPH * HOUR_MS;
+  updateCursor();
+  showTip(p, ev);
+}
+
+function clearCursor() {
+  cursorT = null;
+  updateCursor();
+}
+
+// Shown in place of the strip until the forecast arrives (or if it never does)
+function renderStripMsg(p) {
+  var e = p.el, bad = p.status === 'error' && p.err;
+  p.sg = null;
+  setupCanvas(e.scanvas, Math.round(DAYS * 24 * SPPH), STRIP.h);
+  e.smsg.innerHTML = bad ? esc('Could not load forecast: ' + p.err) + '<button type="button" class="retry">Retry</button>' : 'Loading…';
+  e.smsg.className = 'gmsg' + (bad ? ' bad' : '');
+  e.smsg.hidden = false;
+  placeBand(p);
+  updateStripCursor(p);
+}
+
+function renderStrip(p, P) {
+  if (!p.data || !p.data.daily) { renderStripMsg(p); return; }
+  p.el.smsg.hidden = true;
+  drawStrip(p, P || stripPal());
+  placeBand(p);
+  updateStripCursor(p);
+}
+
+// The legend names the scales in the current units
+function renderLegend() {
+  var lg = document.getElementById('legend');
+  lg.hidden = VIEW !== 'graphic';
+  if (lg.hidden) return;
+  var P = stripPal(), u = U();
+  function grad(stops) { return '<i class="grad" style="background:linear-gradient(90deg,' + stops.join(',') + ')"></i>'; }
+  var tlo = Math.round(cv('temp', TEMP_STOPS_C[0])), thi = Math.round(cv('temp', TEMP_STOPS_C[TEMP_STOPS_C.length - 1]));
+  var parts = [
+    '<span>' + grad(P.cloudStops) + 'top half = cloud cover (clear → overcast)</span>',
+    '<span>' + grad(P.tint) + 'bottom half = temperature (' + tlo + u.temp.u + ' to ' + thi + u.temp.u + ')</span>',
+    '<span><i style="background:' + P.rainBar + '"></i>rain</span>',
+    '<span><i style="background:' + P.snowBar + '"></i>snow (water equivalent)</span>',
+    '<span><i class="wind" style="background:' + P.rollLine + ';box-shadow:0 0 0 1px ' + P.grid + '"></i>rolling 24 h precipitation (top = ' +
+      fv(cv('precip', ROLL_FULL_MM), u.precip.dp === 2 ? 1 : 0) + ' ' + u.precip.u + ', square-root scale)</span>',
+    '<span><i class="wind" style="background:' + P.windMark + '"></i>sustained wind &gt; ' + Math.round(cv('wind', WIND_MARK_MPH * KMH_PER_MPH)) + ' ' + u.wind.u + '</span>',
+    '<span><i style="background:' + P.nightB + ';border:1px solid ' + P.grid + '"></i>night</span>',
+    '<span class="vd">Numbers: high/low ' + u.temp.u + ' · precipitation total ' + u.precip.u + ' (&ge; ' + u.precip.dayMin + ') · new snow ' + u.snow.u + ' (&gt; 0). ' +
+      (DAYS > HOURLY_MAX_DAYS ? 'Beyond ' + HOURLY_MAX_DAYS + ' days values are ' + AGG_HOURS + '-hourly.' : 'Hourly values.') + '</span>'
+  ];
+  lg.innerHTML = parts.join('');
+}
+
 // ── Overview grid ──────────────────────────────────────────────────────────
 function refPlace() {
   for (var i = 0; i < PLACES.length; i++) if (PLACES[i].data && PLACES[i].data.daily) return PLACES[i];
@@ -1764,17 +2247,40 @@ function refPlace() {
 
 // Column headings follow the first place that has data; other places' cells show their own date when it differs
 function renderHeader() {
-  var ref = refPlace(), html = '<div class="gcorner">' + PLACES.length + (PLACES.length === 1 ? ' place' : ' places') + '</div>';
+  var ref = refPlace(), gfx = VIEW === 'graphic', u = U();
+  var count = PLACES.length + (PLACES.length === 1 ? ' place' : ' places');
+  var html = '<div class="gcorner">' + (gfx ? '<div>' + count + '<br><span style="text-transform:none">' +
+             u.temp.u + ' · ' + u.precip.u + ' · ' + u.wind.u + '</span></div>' : count) + '</div>';
+  var dayW = 24 * SPPH, btns = '';
   for (var k = 0; k < DAYS; k++) {
     var d = ref && ref.data.daily[k];
     var on = TARGET && k >= TARGET.a && k <= TARGET.b;
-    html += '<button type="button" class="hd" data-col="' + k + '" aria-pressed="' + !!on + '"' +
+    btns += '<button type="button" class="hd" data-col="' + k + '"' + (gfx ? ' style="width:' + dayW.toFixed(2) + 'px"' : '') +
+            ' aria-pressed="' + !!on + '"' +
             ' title="Rank places for this day (shift-click another day for a span)">' +
             (d ? '<b>' + WD[d.wd] + '</b><span>' + MON[d.mo - 1] + ' ' + d.d + '</span>' : '<b>Day ' + (k + 1) + '</b><span>&nbsp;</span>') +
             '</button>';
   }
-  document.getElementById('ghead').innerHTML = html;
+  var head = document.getElementById('ghead');
+  // graphic view: the day buttons sit in a strip-wide box with an hour-tick canvas under them
+  head.innerHTML = gfx ? html + '<div class="hdays"><div class="hdrow">' + btns + '</div><canvas class="hticks"></canvas></div>' : html + btns;
+  if (gfx) drawHeaderTicks(head.querySelector('canvas'), dayW);
   syncViewBar();
+}
+
+// Hour ticks under the day headings, aligned with the strips' 6 h gridlines
+function drawHeaderTicks(cvs, dayW) {
+  var P = stripPal(), ctx = setupCanvas(cvs, Math.round(DAYS * dayW), 12);
+  ctx.font = '9px system-ui'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  var every = 6 * SPPH >= 30 ? 6 : 12;
+  for (var k = 0; k < DAYS; k++) {
+    for (var h = 0; h < 24; h += 6) {
+      var x = Math.round((k * 24 + h) * SPPH) + 0.5;
+      ctx.strokeStyle = h === 0 ? P.day : P.grid;
+      ctx.beginPath(); ctx.moveTo(x, h === 0 ? 0 : 7); ctx.lineTo(x, 12); ctx.stroke();
+      if (h > 0 && h % every === 0) { ctx.fillStyle = P.tickText; ctx.fillText(hourLabel(h, true), x, 4); }
+    }
+  }
 }
 
 function dayLabel(d) { return WD[d.wd] + ' ' + MON[d.mo - 1] + ' ' + d.d; }
@@ -1836,6 +2342,15 @@ function renderRow(p, P) {
   if (!e) return;
   var host = e.cells;
   e.cellEls = [];
+  if (VIEW === 'graphic') {
+    host.innerHTML = '';
+    renderStrip(p, P);
+    return;
+  }
+  // table view: free the strip canvas
+  p.sg = null;
+  e.scanvas.width = e.scanvas.height = 0;
+  e.band.hidden = e.cur.hidden = true;
   if (!p.data || !p.data.daily) {
     var bad = p.status === 'error' && p.err;
     host.innerHTML = '<div class="gmsg' + (bad ? ' bad' : '') + '">' +
@@ -1896,8 +2411,11 @@ function placeVisible(p) {
 }
 
 // Order rows: filter by tag, optionally group, then rank within each group when a day is targeted
-function applyOrder() {
+// In the graphic view `animate` slides rows to their new positions (FLIP: measure, move in the DOM, invert with a transform, release it)
+function applyOrder(animate) {
   var body = document.getElementById('cards'), vis = PLACES.filter(placeVisible), want = [], k;
+  var flip = animate && VIEW === 'graphic' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var before = flip ? PLACES.map(function(p) { return p.el.root.hidden ? null : p.el.root.getBoundingClientRect().top; }) : null;
   groupEls.forEach(function(g) { if (g.parentNode) g.parentNode.removeChild(g); });
   groupEls = [];
   var buckets = [];
@@ -1941,6 +2459,25 @@ function applyOrder() {
   showEmpty(vis.length);
   // DOM moves can reset scroll positions; put every open meteogram back on the shared instant
   if (moved) PLACES.forEach(function(p) { if (p.open && p.layout) restoreScroll(p); });
+  if (!flip || !moved) return;
+  var sliding = [];
+  PLACES.forEach(function(p, i) {
+    var r = p.el.root;
+    if (before[i] == null || r.hidden) return;
+    var dy = before[i] - r.getBoundingClientRect().top;
+    if (Math.abs(dy) < 1) return;
+    r.style.transition = 'none';
+    r.style.transform = 'translateY(' + dy + 'px)';
+    r.classList.add('moving');
+    sliding.push(r);
+  });
+  if (!sliding.length) return;
+  void body.offsetWidth;
+  sliding.forEach(function(r) {
+    r.style.transition = 'transform ' + FLIP_MS + 'ms cubic-bezier(.2,.8,.2,1)';
+    r.style.transform = '';
+    setTimeout(function() { r.style.transition = ''; r.classList.remove('moving'); }, FLIP_MS + 60);
+  });
 }
 
 function setTarget(t) {
@@ -1949,8 +2486,9 @@ function setTarget(t) {
     b.setAttribute('aria-pressed', String(!!t && k >= t.a && k <= t.b));
   });
   PLACES.forEach(markTarget);
+  placeBands();
   syncViewBar();
-  applyOrder();
+  applyOrder(true);
 }
 
 function onHeaderClick(k, shift) {
@@ -1972,6 +2510,8 @@ function syncViewBar() {
     chips[i].setAttribute('aria-pressed', String(TAGFILTER.indexOf(chips[i].getAttribute('data-tag')) >= 0));
   }
   document.getElementById('groupBtn').setAttribute('aria-pressed', String(GROUP));
+  var vs = document.getElementById('viewSeg').children;
+  for (i = 0; i < vs.length; i++) vs[i].setAttribute('aria-pressed', String(vs[i].getAttribute('data-view') === VIEW));
   document.getElementById('sortSel').value = SORT;
   document.getElementById('spanBtn').setAttribute('aria-pressed', String(SPAN_MODE));
   document.getElementById('clearBtn').hidden = !TARGET;
@@ -2032,11 +2572,16 @@ function buildCard(p) {
           '<button type="button" class="rm" title="Remove" aria-label="Remove">&times;</button>' +
         '</div>' +
         '<div class="tags" role="group" aria-label="Activities">' +
-          TAGS.map(function(t) { return '<button type="button" class="tag" data-tag="' + t + '" aria-pressed="false">' + t + '</button>'; }).join('') +
+          // the first letter is split off so the graphic view can show initials on narrow screens
+          TAGS.map(function(t) {
+            return '<button type="button" class="tag" data-tag="' + t + '" aria-pressed="false" aria-label="' + t + '" title="' + t + '">' +
+                   '<span>' + t.charAt(0) + '</span><span class="tx">' + t.slice(1) + '</span></button>';
+          }).join('') +
         '</div>' +
         '<div class="gstale" hidden>Refresh failed <button type="button" class="retry">Retry</button></div>' +
       '</div>' +
       '<div class="gcells"></div>' +
+      '<div class="strip"><canvas role="img"></canvas><div class="band" hidden></div><div class="cur" hidden></div><div class="gmsg" hidden></div></div>' +
     '</div>' +
     '<div class="gdetail" hidden><div class="card">' +
       '<div class="card-hdr">' +
@@ -2055,7 +2600,8 @@ function buildCard(p) {
     '</div></div>';
   var q = function(s) { return root.querySelector(s); };
   p.el = {
-    root: root, row: q('.grow'), cells: q('.gcells'), cellEls: [], rank: q('.rank'), grip: q('.grip'), cnb: q('.cnb'),
+    root: root, row: q('.grow'), cells: q('.gcells'), cellEls: [], strip: q('.strip'), scanvas: q('.strip canvas'),
+    band: q('.band'), cur: q('.cur'), smsg: q('.strip .gmsg'), rank: q('.rank'), grip: q('.grip'), cnb: q('.cnb'),
     stale: q('.gstale'), detail: q('.gdetail'), tagBtns: [].slice.call(root.querySelectorAll('.tag')),
     name: q('.cname'), meta: q('.cmeta'), ctime: q('.ctime'), err: q('.cerr'), msg: q('.msg'),
     load: q('.cload'), body: q('.cbody'), axis: q('.axis'), scroller: q('.scroller'), inner: q('.sc-inner'),
@@ -2072,8 +2618,13 @@ function buildCard(p) {
   root.addEventListener('click', function(ev) {
     if (ev.target.closest('.retry')) { loadPlace(p); return; }
     if (ev.target.closest('button')) return;
+    // touch: a tap on the strip shows the readout instead; the name opens the meteogram
+    if (p.el.strip.contains(ev.target) && ev.pointerType && ev.pointerType !== 'mouse') { stripPointer(p, ev); return; }
     if (p.el.row.contains(ev.target)) toggleOpen(p);
   });
+  var strip = p.el.strip;
+  strip.addEventListener('pointermove', function(ev) { if (ev.pointerType === 'mouse') stripPointer(p, ev); });
+  strip.addEventListener('pointerleave', function(ev) { if (ev.pointerType === 'mouse') clearCursor(); });
   p.el.cnb.addEventListener('click', function() { toggleOpen(p); });
   var grip = p.el.grip;
   grip.addEventListener('pointerdown', function(ev) { startDrag(ev, p); });
@@ -2097,6 +2648,7 @@ function showLabel(p) {
   p.el.cnb.textContent = p.label;
   p.el.cnb.title = p.label;
   p.el.canvas.setAttribute('aria-label', 'Meteogram for ' + p.label);
+  p.el.scanvas.setAttribute('aria-label', p.label + ' forecast strip');
 }
 
 // Inline rename: swaps the name button for a text box. Enter or blur saves, Escape cancels,
@@ -2164,11 +2716,31 @@ function renderAll() {
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');   // open meteograms are as wide as the visible grid
+  g.classList.toggle('gfx', VIEW === 'graphic');
   computePph();
-  var P = pal();
+  computeSpph();
+  var P = VIEW === 'graphic' ? stripPal() : pal();
   renderHeader();
+  renderLegend();
+  syncNotes();
   PLACES.forEach(function(p) { renderCardState(p); renderRow(p, P); renderCard(p); });
+  updateCursor();
   applyOrder();
+}
+
+// Strip scale: the 24 h day columns fill the width beside the pinned names, down to a readable minimum
+function computeSpph() {
+  var g = document.getElementById('grid');
+  var namew = parseFloat(getComputedStyle(g).getPropertyValue('--namew')) || 176;
+  var avail = g.clientWidth - namew - 2;
+  var min = DAYS <= HOURLY_MAX_DAYS ? MIN_SPPH.short : MIN_SPPH.long;
+  SPPH = Math.max(min, Math.floor(avail / (DAYS * 24) * 100) / 100);
+  g.style.setProperty('--sw', Math.round(DAYS * 24 * SPPH) + 'px');
+}
+
+function syncNotes() {
+  document.getElementById('noteGfx').hidden = VIEW !== 'graphic';
+  document.getElementById('noteTbl').hidden = VIEW !== 'table';
 }
 
 function computePph() {
@@ -2199,6 +2771,15 @@ function setDays(n) {
   }
 }
 
+// Only the overview is redrawn: ranking target, sort, filters, grouping, order and open meteograms carry over
+function setView(v) {
+  if (VIEWS.indexOf(v) < 0 || v === VIEW) return;
+  VIEW = v;
+  savePrefs();
+  clearCursor();
+  renderAll();
+}
+
 function setUnits(u) {
   if (!UNITS[u] || u === UNIT) return;
   UNIT = u;
@@ -2219,6 +2800,10 @@ function setUnits(u) {
   seg.addEventListener('click', function(e) {
     var b = e.target.closest ? e.target.closest('button[data-days]') : null;
     if (b) setDays(+b.getAttribute('data-days'));
+  });
+  document.getElementById('viewSeg').addEventListener('click', function(e) {
+    var b = e.target.closest ? e.target.closest('button[data-view]') : null;
+    if (b) setView(b.getAttribute('data-view'));
   });
   document.getElementById('unitSeg').addEventListener('click', function(e) {
     var b = e.target.closest ? e.target.closest('button[data-units]') : null;
@@ -2262,7 +2847,7 @@ function setUnits(u) {
     SORT = sel.value;
     savePrefs();
     syncViewBar();
-    applyOrder();
+    applyOrder(true);
   });
   document.getElementById('spanBtn').addEventListener('click', function() {
     SPAN_MODE = !SPAN_MODE;
@@ -2317,8 +2902,12 @@ setInterval(function() {
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
+  g.classList.toggle('gfx', VIEW === 'graphic');
   computePph();
+  computeSpph();
   renderHeader();
+  renderLegend();
+  syncNotes();
   applyOrder();
   PLACES.forEach(function(p) { loadPlace(p); });
 })();
