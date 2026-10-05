@@ -114,9 +114,9 @@
   .ghd{position:sticky;left:0;width:var(--gw);background:var(--bg);padding:5px 10px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
   .gdetail{position:sticky;left:0;width:var(--gw);border-top:1px solid var(--border)}
   .tag .tx{display:inline}
-  /* Graphic view: one 49 px strip per place (+ the 1 px row gap = 50 px); days are 24 h wide, so --sw = days x 24 x px-per-hour */
+  /* Graphic view: one strip per place, --sh tall (row height from the slider minus the 1 px row gap; 49 px by default); days are 24 h wide, so --sw = days x 24 x px-per-hour */
   .strip,.hdays{display:none}
-  .strip{flex:none;position:relative;width:var(--sw);height:49px;touch-action:pan-x pan-y;cursor:crosshair}
+  .strip{flex:none;position:relative;width:var(--sw);height:var(--sh,49px);touch-action:pan-x pan-y;cursor:crosshair}
   .strip canvas{display:block;position:absolute;left:0;top:0}
   .strip .gmsg{padding:17px 10px;white-space:nowrap}
   .band{position:absolute;top:0;bottom:0;pointer-events:none;background:rgba(var(--accent-rgb),.15);
@@ -132,9 +132,12 @@
   .gfx .ghead{display:flex}
   .gfx .gcorner{flex:none;width:var(--namew);padding:6px 8px;line-height:1.3}
   .gfx .hd{flex:none;height:30px;padding:4px 2px 2px;gap:0;line-height:1.25;overflow:hidden}
-  .gfx .grow{display:flex;height:49px}
+  .gfx .grow{display:flex;height:var(--sh,49px)}
   .prow.moving{z-index:6}
-  .gfx .gname{flex:none;width:var(--namew);height:49px;padding:5px 6px 0 6px}
+  .gfx .gname{flex:none;width:var(--namew);height:var(--sh,49px);padding:5px 6px 0 6px;overflow:hidden}
+  .gfx.lowrow .tags{display:none}   /* rows under 50 px: only the name line fits */
+  #rowh{width:110px;accent-color:var(--accent)}
+  .rowhv{font-size:11px;color:var(--muted);min-width:34px}
   .gfx .gn1{align-items:center}
   .gfx .cnb{display:block;white-space:nowrap;text-overflow:ellipsis;line-height:18px}
   .gfx .tags{flex-wrap:nowrap;margin-top:3px}
@@ -255,6 +258,12 @@
       <button type="button" data-view="table" aria-pressed="false" title="Text grid per day">Table</button>
     </div>
   </div>
+  <div class="grp" id="rowhGrp">
+    <label for="rowh">Row</label>
+    <input type="range" id="rowh" min="40" max="120" step="10" value="50" list="rowhTicks" aria-label="Graphic row height">
+    <datalist id="rowhTicks"><option value="40"></option><option value="60"></option><option value="80"></option><option value="100"></option><option value="120"></option></datalist>
+    <span class="rowhv" id="rowhVal">50 px</span>
+  </div>
   <div class="grp">
     <label>Activity</label>
     <div class="chips" id="filterChips" role="group" aria-label="Show only places with these activity tags"></div>
@@ -361,7 +370,8 @@ var STRIP_RAIN_FULL_MM_H = 4;   // graphic view: a bar reaches full height at th
 var STRIP_PRECIP_MIN_MM = 0.02; // graphic view: smaller bin totals draw no bar
 var MIN_SPPH = { short: 4.5, long: 3.25 };   // narrowest strip, px per hour (ranges up to HOURLY_MAX_DAYS / longer)
 var FLIP_MS = 380;              // row re-sort animation
-var STRIP = { h: 49, numY: 10, tintTop: 13, tintMid: 31, barBase: 45, barMax: 30 };   // strip layout, CSS px: the top 13 px hold the daily numbers
+var STRIP = { h: 49, numY: 10, tintTop: 13, tintMid: 31, barBase: 45, barMax: 30 };   // strip layout, CSS px: the top 13 px hold the daily numbers; rest set by applyRowH
+var ROWH = { min: 40, max: 120, step: 10, def: 50 };   // graphic row height slider (strip + 1 px gap)
 // Temperature tint stops (degC): cool blue -> neutral -> warm red (coolwarm-like diverging scale).
 // TINT = lane fills, LINE = number colors; each tuned per theme.
 var TEMP_STOPS_C = [-25, -10, 0, 12, 22, 32, 42];
@@ -482,6 +492,7 @@ var viewT = null;         // instant at the left edge of the last-scrolled card
 var searchSeq = 0;
 var pending = 0;
 var VIEW = VIEWS[0];      // overview style: 'graphic' strips or 'table' text cells
+var ROW_H = ROWH.def;     // graphic row height, CSS px
 var SPPH = MIN_SPPH.short;   // strip pixels per hour (graphic view)
 var SORT = 'dry';         // ranking metric
 var TAGFILTER = [];       // selected activity tags (empty = show all places)
@@ -683,11 +694,12 @@ function loadPrefs() {
     TAGFILTER = cleanTags(o.tags);
     GROUP = o.group === true;
     if (VIEWS.indexOf(o.view) >= 0) VIEW = o.view;
+    if (o.rowh >= ROWH.min && o.rowh <= ROWH.max) ROW_H = Math.round(o.rowh / ROWH.step) * ROWH.step;
   } catch (e) {}
 }
 
 function savePrefs() {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP, view: VIEW })); } catch (e) {}
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP, view: VIEW, rowh: ROW_H })); } catch (e) {}
 }
 
 function loadSavedUnits() {
@@ -2717,6 +2729,7 @@ function renderAll() {
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');   // open meteograms are as wide as the visible grid
   g.classList.toggle('gfx', VIEW === 'graphic');
+  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   computePph();
   computeSpph();
   var P = VIEW === 'graphic' ? stripPal() : pal();
@@ -2772,6 +2785,29 @@ function setDays(n) {
 }
 
 // Only the overview is redrawn: ranking target, sort, filters, grouping, order and open meteograms carry over
+// Graphic row height: the numbers line stays 13 px; the lane below it splits evenly into cloud and
+// temperature halves, and precipitation bars scale with the lane (same height in every row, so still comparable)
+function applyRowH() {
+  var h = ROW_H - 1, lane = h - STRIP.tintTop, g = document.getElementById('grid');
+  STRIP.h = h;
+  STRIP.tintMid = STRIP.tintTop + Math.round(lane / 2);
+  STRIP.barBase = h - 4;
+  STRIP.barMax = Math.round(lane * 0.83);
+  g.style.setProperty('--sh', h + 'px');
+  g.classList.toggle('lowrow', ROW_H < 50);
+  document.getElementById('rowh').value = ROW_H;
+  document.getElementById('rowhVal').textContent = ROW_H + ' px';
+}
+
+function setRowH(v) {
+  v = Math.round(clamp(+v, ROWH.min, ROWH.max) / ROWH.step) * ROWH.step;
+  if (v === ROW_H) return;
+  ROW_H = v;
+  applyRowH();
+  savePrefs();
+  renderAll();
+}
+
 function setView(v) {
   if (VIEWS.indexOf(v) < 0 || v === VIEW) return;
   VIEW = v;
@@ -2805,6 +2841,7 @@ function setUnits(u) {
     var b = e.target.closest ? e.target.closest('button[data-view]') : null;
     if (b) setView(b.getAttribute('data-view'));
   });
+  document.getElementById('rowh').addEventListener('input', function(e) { setRowH(e.target.value); });
   document.getElementById('unitSeg').addEventListener('click', function(e) {
     var b = e.target.closest ? e.target.closest('button[data-units]') : null;
     if (b) setUnits(b.getAttribute('data-units'));
@@ -2890,6 +2927,7 @@ setInterval(function() {
 (function() {
   UNIT = loadSavedUnits() || 'imperial';
   loadPrefs();
+  applyRowH();
   var list = loadSavedPlaces();
   if (!list.length) list = [validPlace(DEFAULT_PLACE.lat, DEFAULT_PLACE.lon, DEFAULT_PLACE.label)];
   syncSegs();
@@ -2903,6 +2941,7 @@ setInterval(function() {
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
   g.classList.toggle('gfx', VIEW === 'graphic');
+  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   computePph();
   computeSpph();
   renderHeader();
