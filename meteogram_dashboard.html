@@ -308,7 +308,7 @@
 </div>
 <div class="note">
   Both views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
-  total precipitation and snow, and the highest wind or high. Clicking a row opens its full meteogram.
+  total precipitation and snow, the highest wind or high, and the mean daylight cloud cover (Sunniest / Cloudiest). Clicking a row opens its full meteogram.
   Grouping files a place under its first activity tag. The meteogram&rsquo;s precipitation panel also draws the rolling 24-hour total (liquid-water equivalent, trailing 24&nbsp;h ending at each point,
   computed from hourly data) on its own scale, labeled in the leftmost axis column. The precipitation bar and 24-hour scales are shared by every place (in the strips too), so a wetter place looks wetter. Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
   (Open-Meteo assumes about 0.7&nbsp;cm of snow per mm of water). Beyond 7 days the data are shown as 3-hour
@@ -357,7 +357,7 @@ var PRECIP_CODE_HOURS = 3;      // daytime hours with a precipitating code befor
 var PRECIP_FULL_MM = 15;        // daily liquid-water equivalent that gives the darkest precipitation shade / full bar
 var SNOW_FULL_CM = 30;          // daily new snow that gives the darkest snow shade
 var TEMP_TINT_C = [-20, 35];    // daily temperatures mapped from blue to red
-var SORTS = [['dry', 'Driest'], ['calm', 'Calmest'], ['warm', 'Warmest'], ['cool', 'Coolest'], ['snow', 'Most new snow']];
+var SORTS = [['dry', 'Driest'], ['calm', 'Calmest'], ['warm', 'Warmest'], ['cool', 'Coolest'], ['sun', 'Sunniest'], ['cloud', 'Cloudiest'], ['snow', 'Most new snow']];
 var VIEWS = ['graphic', 'table'];   // overview styles; the first is the default
 var KMH_PER_MPH = 1.609344;
 var PAST_DAYS = 1;              // extra day requested before today, only to seed the rolling 24 h precipitation window
@@ -1198,7 +1198,8 @@ function dayStats(p, a, b, w) {
     snowCm: agg(h.snowfall, a, b, 'sum'),
     prob: agg(h.precipitation_probability, a, b, 'max'),
     ws: agg(h.wind_speed_10m, a, b, 'max'), dir: aggDir(h.wind_direction_10m, h.wind_speed_10m, a, b),
-    frz: agg(pick(h.freezing_level_height, day), 0, day.length, 'mean')
+    frz: agg(pick(h.freezing_level_height, day), 0, day.length, 'mean'),
+    cloud: agg(pick(h.cloud_cover, day), 0, day.length, 'mean')
   };
 }
 
@@ -2392,8 +2393,8 @@ function markTarget(p) {
 function sortKey(p) {
   var d = p.data && p.data.daily;
   if (!d || !TARGET || TARGET.b >= d.length) return null;
-  var field = { dry: 'total', calm: 'ws', warm: 'hi', cool: 'hi', snow: 'snowCm' }[SORT];
-  var sum = 0, mx = -Infinity, prob = 0;
+  var field = { dry: 'total', calm: 'ws', warm: 'hi', cool: 'hi', sun: 'cloud', cloud: 'cloud', snow: 'snowCm' }[SORT];
+  var sum = 0, mx = -Infinity, prob = 0, n = TARGET.b - TARGET.a + 1;
   for (var k = TARGET.a; k <= TARGET.b; k++) {
     var v = d[k][field];
     if (v == null) return null;
@@ -2407,6 +2408,8 @@ function sortKey(p) {
     case 'calm': return [r(mx, 1)];                // span maximum
     case 'warm': return [-r(mx, 0.1)];
     case 'cool': return [r(mx, 0.1)];
+    case 'sun':  return [r(sum / n, 1)];           // span mean of daylight cloud cover
+    case 'cloud': return [-r(sum / n, 1)];
     default:     return [-r(sum, 0.1)];            // most new snow over the span
   }
 }
