@@ -83,6 +83,9 @@
   .cnb::before{content:"\25B8\00a0";color:var(--muted)}
   .cnb[aria-expanded=true]::before{content:"\25BE\00a0"}
   .gn1 .rm{font-size:16px;padding:0 3px}
+  .gn1 .ren{font-size:13px;padding:1px 3px}
+  .ren:hover{color:var(--accent)}
+  .rename{flex:1 1 auto;min-width:0;font:inherit;font-size:12.5px;font-weight:600;padding:1px 4px;border:1px solid var(--accent);border-radius:4px;background:var(--bg);color:var(--text)}
   .tags{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
   .tag{font-size:9px;line-height:14px;padding:1px 6px;border-radius:9px;color:var(--muted)}
   .tag[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
@@ -118,7 +121,7 @@
   .cname{font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cmeta{font-size:10px;color:var(--muted);margin-top:2px}
   .ctime{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:3px}
-  .rm{border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:0 6px;border-radius:10px}
+  .rm,.ren{border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:0 6px;border-radius:10px}
   .rm:hover{color:var(--danger)}
   .cerr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--danger);font-size:11px;padding:6px 0 8px}
   .cload{color:var(--muted);font-size:11px;padding:6px 0 8px}
@@ -2025,6 +2028,7 @@ function buildCard(p) {
           '<button type="button" class="grip" title="Drag to reorder" aria-label="Drag to reorder">&#8942;&#8942;</button>' +
           '<span class="rank" hidden></span>' +
           '<button type="button" class="cnb" aria-expanded="false" title="Show or hide the full meteogram"></button>' +
+          '<button type="button" class="ren" title="Rename" aria-label="Rename">&#9998;</button>' +
           '<button type="button" class="rm" title="Remove" aria-label="Remove">&times;</button>' +
         '</div>' +
         '<div class="tags" role="group" aria-label="Activities">' +
@@ -2058,11 +2062,10 @@ function buildCard(p) {
     canvas: q('.sc-inner canvas'), nowline: q('.nowline'), curline: q('.curline'), curtag: q('.curtag'), legs: q('.legs')
   };
   p.vals = {};
-  p.el.name.textContent = p.label;
-  p.el.cnb.textContent = p.label;
-  p.el.cnb.title = p.label;
+  showLabel(p);
   syncTagBtns(p);
   q('.rm').addEventListener('click', function() { removePlace(p); });
+  q('.ren').addEventListener('click', function() { startRename(p); });
   p.el.tagBtns.forEach(function(b) {
     b.addEventListener('click', function() { toggleTag(p, b.getAttribute('data-tag')); });
   });
@@ -2087,6 +2090,49 @@ function buildCard(p) {
   renderCardState(p);
   renderRow(p);
   return root;
+}
+
+function showLabel(p) {
+  p.el.name.textContent = p.label;
+  p.el.cnb.textContent = p.label;
+  p.el.cnb.title = p.label;
+  p.el.canvas.setAttribute('aria-label', 'Meteogram for ' + p.label);
+}
+
+// Inline rename: swaps the name button for a text box. Enter or blur saves, Escape cancels,
+// an empty name keeps the old one. Coordinates are unaffected (still shown in the meteogram header).
+function startRename(p) {
+  var cnb = p.el.cnb;
+  if (cnb.hidden) return;
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'rename';
+  inp.value = p.label;
+  inp.maxLength = 60;
+  inp.setAttribute('aria-label', 'Place name');
+  var done = false;
+  function finish(save) {
+    if (done) return;
+    done = true;
+    var v = inp.value.trim();
+    if (save && v && v !== p.label) {
+      p.label = v;
+      savePlaces();
+      showLabel(p);
+    }
+    inp.remove();
+    cnb.hidden = false;
+  }
+  inp.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  inp.addEventListener('blur', function() { finish(true); });
+  inp.addEventListener('click', function(ev) { ev.stopPropagation(); });   // don't toggle the meteogram
+  cnb.hidden = true;
+  cnb.parentNode.insertBefore(inp, cnb);
+  inp.focus();
+  inp.select();
 }
 
 function fmtCoord(lat, lon) {
