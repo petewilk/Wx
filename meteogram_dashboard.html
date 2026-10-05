@@ -295,9 +295,8 @@
 <div class="note" id="noteGfx">
   Graphic view: each row is a place&rsquo;s timeline at 24&nbsp;h per day in its own local time, so day columns line up and the crosshair marks the same
   instant in every row. The top half of a strip is tinted by cloud cover (pale yellow clear, light gray half, dark gray overcast) and the bottom half by
-  temperature (blue cold to red hot). Bars are rain (blue) and snow (cyan) as liquid-water equivalent, scaled by the square root of the hourly
-  intensity so light rain stays visible, with the same scale in every row. A thin dark (light on the dark theme) line is the rolling 24-hour precipitation total, on one square-root scale for every row (top of the strip is
-  about 2&nbsp;in / 50&nbsp;mm). Nights are shaded, faint lines mark 6-hour steps, and an amber bar along the
+  temperature (blue cold to red hot). Bars are rain (blue) and snow (cyan) as liquid-water equivalent, on a linear scale (the same in every row; even drizzle shows at least a sliver). A thin dark (light on the dark theme) line is the rolling 24-hour precipitation total, on one linear scale for every row (top of the strip is
+  1&nbsp;in / 25&nbsp;mm; bars are full height at 2&nbsp;mm / 0.08&nbsp;in per hour; larger values are capped). Nights are shaded, faint lines mark 6-hour steps, and an amber bar along the
   bottom edge marks sustained 10&nbsp;m wind above 20&nbsp;mph (32&nbsp;km/h). Numbers above each day are the high/low, the precipitation total
   (from 0.1&nbsp;in / 2.5&nbsp;mm) and any new snow. Hover a strip for the details; on touch screens tap a strip, and tap the place name to open its meteogram.
 </div>
@@ -363,10 +362,10 @@ var VIEWS = ['graphic', 'table'];   // overview styles; the first is the default
 var KMH_PER_MPH = 1.609344;
 var PAST_DAYS = 1;              // extra day requested before today, only to seed the rolling 24 h precipitation window
 var ROLL_HOURS = 24;            // rolling precipitation window
-var ROLL_FULL_MM = 50;          // graphic view: the 24 h total line reaches the top of the lane at this (about 2 in), sqrt scale
+var ROLL_FULL_MM = 25.4;        // graphic view: the 24 h total line reaches the top of the lane at this (1 in), linear scale; more is capped
 var ROLL_MIN_MM = 0.05;         // smaller 24 h totals are not drawn (line breaks)
 var WIND_MARK_MPH = 20;         // graphic view: sustained 10 m wind above this gets the amber marker (physical threshold, shown converted)
-var STRIP_RAIN_FULL_MM_H = 4;   // graphic view: a bar reaches full height at this liquid-equivalent rate (mm per hour)
+var STRIP_RAIN_FULL_MM_H = 2;   // graphic view: a bar reaches full height at this liquid-equivalent rate (mm per hour, about 0.08 in); more is capped
 var STRIP_PRECIP_MIN_MM = 0.02; // graphic view: smaller bin totals draw no bar
 var MIN_SPPH = { short: 4.5, long: 3.25 };   // narrowest strip, px per hour (ranges up to HOURLY_MAX_DAYS / longer)
 var FLIP_MS = 380;              // row re-sort animation
@@ -2024,14 +2023,14 @@ function drawStripTint(ctx, g) {
 }
 
 // Precipitation: rain at the bottom, snow water equivalent stacked above, on a 1 px halo.
-// Height = sqrt of intensity so drizzle is visible; same scale in every row.
+// Height is linear in intensity (minimum 1.5 px so drizzle still shows); same scale in every row.
 function drawStripBars(ctx, g) {
   var S = g.S, P = g.P, bw = S.step * SPPH, w = Math.max(1, bw - (bw > 5 ? 1 : 0));
   for (var i = 0; i < S.n; i++) {
     var rain = S.rain[i] || 0, snow = S.snowWE[i] || 0, tot = rain + snow;
     if (tot < STRIP_PRECIP_MIN_MM) continue;
     var rate = tot / S.step;
-    var ht = Math.max(1.5, STRIP.barMax * Math.sqrt(Math.min(1, rate / STRIP_RAIN_FULL_MM_H)));
+    var ht = Math.max(1.5, STRIP.barMax * Math.min(1, rate / STRIP_RAIN_FULL_MM_H));
     var hr = ht * rain / tot, hs = ht - hr;
     var xa = sxOf(g, S.t[i] - HOUR_MS);           // precipitation is a preceding-hour total
     ctx.fillStyle = P.halo; ctx.fillRect(xa - 1, STRIP.barBase - ht - 1, w + 2, ht + 2);
@@ -2040,11 +2039,11 @@ function drawStripBars(ctx, g) {
   }
 }
 
-// Rolling 24 h total as a line over the bars on one fixed sqrt scale (ROLL_FULL_MM = top of the lane), same in every row.
+// Rolling 24 h total as a line over the bars on one fixed linear scale (ROLL_FULL_MM = top of the lane), same in every row.
 // It is not drawn where the total is below ROLL_MIN_MM, so dry stretches stay clean. A haloed line stays readable on any tint.
 function drawStripRoll(ctx, g) {
   var S = g.S, P = g.P, top = STRIP.tintTop + 2, bot = g.H - 2, pen = false, px = 0, py = 0, lone = true;
-  function y(v) { return bot - (bot - top) * Math.sqrt(Math.min(1, v / ROLL_FULL_MM)); }
+  function y(v) { return bot - (bot - top) * Math.min(1, v / ROLL_FULL_MM); }
   [[P.halo, 4], [P.rollLine, 1.5]].forEach(function(st) {
     ctx.strokeStyle = st[0]; ctx.fillStyle = st[0]; ctx.lineWidth = st[1]; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     pen = false;
@@ -2242,7 +2241,7 @@ function renderLegend() {
     '<span><i style="background:' + P.rainBar + '"></i>rain</span>',
     '<span><i style="background:' + P.snowBar + '"></i>snow (water equivalent)</span>',
     '<span><i class="wind" style="background:' + P.rollLine + ';box-shadow:0 0 0 1px ' + P.grid + '"></i>rolling 24 h precipitation (top = ' +
-      fv(cv('precip', ROLL_FULL_MM), u.precip.dp === 2 ? 1 : 0) + ' ' + u.precip.u + ', square-root scale)</span>',
+      fv(cv('precip', ROLL_FULL_MM), u.precip.dp === 2 ? 1 : 0) + ' ' + u.precip.u + ', linear scale)</span>',
     '<span><i class="wind" style="background:' + P.windMark + '"></i>sustained wind &gt; ' + Math.round(cv('wind', WIND_MARK_MPH * KMH_PER_MPH)) + ' ' + u.wind.u + '</span>',
     '<span><i style="background:' + P.nightB + ';border:1px solid ' + P.grid + '"></i>night</span>',
     '<span class="vd">Numbers: high/low ' + u.temp.u + ' · precipitation total ' + u.precip.u + ' (&ge; ' + u.precip.dayMin + ') · new snow ' + u.snow.u + ' (&gt; 0). ' +
