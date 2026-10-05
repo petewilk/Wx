@@ -34,4 +34,4 @@ if ! git diff --quiet HEAD -- "${FILES[@]}"; then
 fi
 
 echo "Deploying to $HOST:$DEST (branch $BRANCH, $(git rev-parse --short HEAD))"
-rsync -tvz "${DRY_RUN[@]}" -- "${FILES[@]}" "$HOST:$DEST"
+rsync -tvz ${DRY_RUN[@]+"${DRY_RUN[@]}"} -- "${FILES[@]}" "$HOST:$DEST"
