@@ -44,6 +44,12 @@
   .seg button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700;z-index:1}
   html.light .seg button[aria-pressed=true]{color:#fff}
   .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:2}
+  .sharegrp{position:relative}
+  .sharemenu{position:absolute;top:calc(100% + 4px);left:0;z-index:50;display:flex;flex-direction:column;min-width:140px;padding:4px;
+    background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .sharemenu[hidden]{display:none}
+  .sharemenu button{border:0;text-align:left;padding:6px 10px;font-size:12px}
+  .sharemenu button:hover,.sharemenu button:focus-visible{background:rgba(var(--accent-rgb),.15);outline:none}
   .upd{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
   .status{padding:4px 20px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);min-height:20px}
   .status.err{color:var(--danger)}
@@ -248,8 +254,13 @@
     <button type="button" id="refreshBtn" onclick="refreshAll()" title="Reload all forecasts">&#8635; Refresh</button>
     <span class="upd" id="upd"></span>
   </div>
-  <div class="grp">
-    <button type="button" id="shareBtn" onclick="sharePlaces()" title="Copy a link that opens this place list on another device">&#128279; Share places</button>
+  <div class="grp sharegrp">
+    <button type="button" id="shareBtn" onclick="toggleShareMenu()" aria-haspopup="menu" aria-expanded="false" aria-controls="shareMenu"
+            title="Link that opens this place list on another device">&#128279; Share places &#9662;</button>
+    <div class="sharemenu" id="shareMenu" role="menu" hidden>
+      <button type="button" role="menuitem" onclick="closeShareMenu(); copyLink(shareUrl())">Copy link</button>
+      <button type="button" role="menuitem" id="shareSheetBtn" onclick="closeShareMenu(); shareSheet()">Share&hellip;</button>
+    </div>
   </div>
 </div>
 
@@ -722,13 +733,39 @@ window.addEventListener('hashchange', function() {
   if (/[#&]places=/.test(location.hash)) location.reload();
 });
 
-function sharePlaces() {
-  var url = location.origin + location.pathname + '#places=' + encodePlaces(PLACES);
-  if (navigator.share) {
-    navigator.share({ title: document.title, url: url }).catch(function(e) {
-      if (e && e.name !== 'AbortError') copyLink(url);
-    });
-  } else copyLink(url);
+function shareUrl() {
+  return location.origin + location.pathname + '#places=' + encodePlaces(PLACES);
+}
+
+// Share menu: Copy link always; Share… (the system share sheet) only where the browser has one
+function toggleShareMenu() {
+  var m = document.getElementById('shareMenu');
+  if (!m.hidden) { closeShareMenu(); return; }
+  document.getElementById('shareSheetBtn').hidden = !navigator.share;
+  m.hidden = false;
+  document.getElementById('shareBtn').setAttribute('aria-expanded', 'true');
+  m.querySelector('button').focus();
+}
+
+function closeShareMenu() {
+  document.getElementById('shareMenu').hidden = true;
+  document.getElementById('shareBtn').setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.sharegrp')) closeShareMenu();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && !document.getElementById('shareMenu').hidden) {
+    closeShareMenu(); document.getElementById('shareBtn').focus();
+  }
+});
+
+function shareSheet() {
+  var url = shareUrl();
+  navigator.share({ title: document.title, url: url }).catch(function(e) {
+    if (e && e.name !== 'AbortError') copyLink(url);
+  });
 }
 
 function copyLink(url) {
