@@ -248,6 +248,9 @@
     <button type="button" id="refreshBtn" onclick="refreshAll()" title="Reload all forecasts">&#8635; Refresh</button>
     <span class="upd" id="upd"></span>
   </div>
+  <div class="grp">
+    <button type="button" id="shareBtn" onclick="sharePlaces()" title="Copy a link that opens this place list on another device">&#128279; Share places</button>
+  </div>
 </div>
 
 <div class="controls vbar" id="vbar">
@@ -672,6 +675,68 @@ function loadSavedPlaces() {
       return v;
     }).filter(Boolean).slice(0, MAX_PLACES);
   } catch (e) { return []; }
+}
+
+// ── Share link: the place list packed into the URL fragment ────────────────
+// #places=<base64url JSON of [lat, lon, label, tag bitmask]>. The fragment never reaches the server.
+function encodePlaces(list) {
+  var a = list.map(function(p) {
+    var m = 0;
+    TAGS.forEach(function(t, i) { if (p.tags.indexOf(t) >= 0) m |= 1 << i; });
+    return [p.lat, p.lon, p.label, m];
+  });
+  var bin = unescape(encodeURIComponent(JSON.stringify(a)));   // UTF-8 bytes for btoa
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodePlaces(str) {
+  try {
+    var b = str.replace(/-/g, '+').replace(/_/g, '/');
+    var a = JSON.parse(decodeURIComponent(escape(atob(b))));
+    if (!Array.isArray(a)) return null;
+    var list = a.map(function(o) {
+      var v = Array.isArray(o) && validPlace(o[0], o[1], typeof o[2] === 'string' ? o[2].slice(0, 80) : '');
+      if (v) v.tags = TAGS.filter(function(t, i) { return (o[3] | 0) & (1 << i); });
+      return v;
+    }).filter(Boolean).slice(0, MAX_PLACES);
+    return list.length ? list : null;
+  } catch (e) { return null; }
+}
+
+// Places from a #places= link, after the user agrees to replace a different saved list; null otherwise
+function placesFromLink(saved) {
+  var m = /[#&]places=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!m) return null;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  var list = decodePlaces(m[1]);
+  if (!list) { setStatus('That share link could not be read', true); return null; }
+  if (saved.length && encodePlaces(saved) !== encodePlaces(list) &&
+      !confirm('Replace your ' + saved.length + ' saved place' + (saved.length === 1 ? '' : 's') +
+               ' with the ' + list.length + ' from this link?')) return null;
+  setStatus('Loaded ' + list.length + ' place' + (list.length === 1 ? '' : 's') + ' from the link');
+  return list;
+}
+
+// A share link pasted into an already-open tab only changes the fragment, so reload to import it
+window.addEventListener('hashchange', function() {
+  if (/[#&]places=/.test(location.hash)) location.reload();
+});
+
+function sharePlaces() {
+  var url = location.origin + location.pathname + '#places=' + encodePlaces(PLACES);
+  if (navigator.share) {
+    navigator.share({ title: document.title, url: url }).catch(function(e) {
+      if (e && e.name !== 'AbortError') copyLink(url);
+    });
+  } else copyLink(url);
+}
+
+function copyLink(url) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function() {
+      setStatus('Link copied: open it on the other device to load these ' + PLACES.length + ' places');
+    }, function() { prompt('Copy this link:', url); });
+  } else prompt('Copy this link:', url);
 }
 
 function cleanTags(t) {
@@ -2930,7 +2995,8 @@ setInterval(function() {
   UNIT = loadSavedUnits() || 'imperial';
   loadPrefs();
   applyRowH();
-  var list = loadSavedPlaces();
+  var saved = loadSavedPlaces(), linked = placesFromLink(saved);
+  var list = linked || saved;
   if (!list.length) list = [validPlace(DEFAULT_PLACE.lat, DEFAULT_PLACE.lon, DEFAULT_PLACE.label)];
   syncSegs();
   var c = document.getElementById('cards');
@@ -2939,6 +3005,7 @@ setInterval(function() {
     PLACES.push(p);
     c.appendChild(buildCard(p));
   });
+  if (linked) savePlaces();
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
