@@ -10,7 +10,7 @@
     --accent:#58a6ff; --green:#3fb950; --muted:#8b949e;
     --text:#e6edf3; --danger:#f85149; --warn:#d29922;
     --accent-rgb:88,166,255; --rain-rgb:56,139,253; --snow-rgb:150,225,245; --amber-rgb:210,153,34; --red-rgb:248,81,73;
-    --namew:176px; --cellw:96px; --cols:7; --gw:100vw;
+    --namew:176px; --cellw:96px; --cols:7; --gw:100vw; --climbw:64px;
   }
   html.light {
     --bg:#f6f8fa; --surface:#ffffff; --border:#d0d7de;
@@ -99,9 +99,24 @@
   .gstale{font-size:10px;color:var(--danger);margin-top:4px}
   .gstale button{font-size:10px;padding:0 6px}
   .gcells{display:contents}
+  /* Climb column (table view): the ranked span's mean Climbing Index, one cell per row between the name and the days */
+  .gclimb,.hdc{display:none}
+  .withclimb .ghead,.withclimb .grow{grid-template-columns:var(--namew) var(--climbw) repeat(var(--cols),minmax(0,1fr))}
+  .withclimb .gin{min-width:calc(var(--namew) + var(--climbw) + var(--cols) * var(--cellw))}
+  .withclimb .gclimb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:0;border-left:1px solid var(--border);padding:8px 4px}
+  .withclimb .hdc{display:flex;flex-direction:column;justify-content:flex-end;gap:1px;border-left:1px solid var(--border);padding:6px 2px;text-align:center;font-size:10px;color:var(--muted);background:rgba(var(--accent-rgb),.06)}
+  .hdc b{font-size:12px;color:var(--text)}
+  .gclimb .sc{font-size:14px;font-weight:700;line-height:20px;min-width:34px;text-align:center;padding:0 6px;border-radius:4px;font-variant-numeric:tabular-nums}
+  .gclimb .sc.none{color:var(--muted);font-weight:400}
+  .gclimb .scsub{font-size:9px;color:var(--muted);text-align:center;line-height:1.2}
+  .withclimb .gmsg{grid-column:3 / -1;left:calc(var(--namew) + var(--climbw));width:calc(var(--gw) - var(--namew) - var(--climbw))}
+  /* Climbing thirds in a day cell: three pills (morning, midday, afternoon) on the stop-light scale */
+  .gcp{display:flex;justify-content:center;gap:2px;margin-bottom:5px}   /* top of the cell, as in the graphic view */
+  .gcp i{display:block;width:100%;max-width:22px;height:6px;border-radius:3px}
   .gc{border-left:1px solid var(--border);padding:6px 4px 6px 5px;min-width:0;position:relative}
   .gc.tcol{background:rgba(var(--accent-rgb),.1)}
   .gdate{position:absolute;top:2px;right:3px;font-size:8px;color:var(--muted);font-style:italic}
+  .gcp + .gdate{top:17px}   /* clear the Climb pills */
   .gtop{display:flex;align-items:center;gap:5px}
   .gtop canvas{flex:none;display:block}
   .temps{display:flex;flex-direction:column;gap:1px;align-items:flex-start}
@@ -133,7 +148,8 @@
   @media (min-width:601px){.gfx{--namew:196px}}
   .gfx .strip{display:block}
   .gfx .hdays{display:block;flex:none;width:var(--sw)}
-  .gfx .gcells,.gfx .rank{display:none!important}
+  .gfx .gcells,.gfx .rank,.gfx .gclimb,.gfx .hdc{display:none!important}
+  .gfx .prow.hasclimb{--sh:calc(var(--shb,49px) + var(--lh,7px))}   /* Climb rows carry the score lane above the strip */
   .gfx .gin{width:calc(var(--namew) + var(--sw));min-width:0}
   .gfx .ghead{display:flex}
   .gfx .gcorner{flex:none;width:var(--namew);padding:6px 8px;line-height:1.3}
@@ -153,6 +169,7 @@
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .legend i{display:inline-block;width:12px;height:9px;border-radius:2px}
   .legend i.grad{width:46px}
+  .legend i.pill{width:16px;height:6px;border-radius:3px}
   .legend i.wind{height:3px;width:14px}
   .legend .vd{flex:1 1 100%}
   .tip{position:fixed;z-index:50;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;
@@ -205,7 +222,7 @@
     .controls select{font-size:16px;min-height:40px}
     .vbar .chip,.vbar .tog{min-height:34px;font-size:12px}
     .gridwrap{margin:0 16px;border:1px solid var(--border)}
-    :root{--namew:120px}
+    :root{--namew:120px;--climbw:56px}
     .card{padding:12px 16px 8px}
     .rm{min-height:0;font-size:20px}
     .grip{min-height:0;font-size:20px}
@@ -291,6 +308,16 @@
     <button type="button" class="tog" id="spanBtn" aria-pressed="false" title="Next day heading you tap extends the selection (same as shift-click)">Span</button>
     <button type="button" id="clearBtn" hidden>Clear ranking</button>
   </div>
+  <div class="grp" id="climbGrp" hidden>
+    <label for="climbIdeal">Ideal</label>
+    <select id="climbIdeal" aria-label="Ideal climbing temperature"></select>
+    <label for="climbWidth">&plusmn;</label>
+    <select id="climbWidth" aria-label="Climbing temperature width"></select>
+    <label for="sunKnob">Walls</label>
+    <select id="sunKnob" aria-label="Sun knob: the kind of walls you are planning for">
+      <option value="sun">Sunny</option><option value="mixed">Mixed</option><option value="shade">Shady</option>
+    </select>
+  </div>
   <div class="vhint" id="rankInfo"></div>
 </div>
 
@@ -313,12 +340,14 @@
   1&nbsp;in / 25&nbsp;mm; bars are full height at 2&nbsp;mm / 0.08&nbsp;in per hour; larger values are capped). Nights are shaded, faint lines mark 6-hour steps, and an amber bar along the
   bottom edge marks sustained 10&nbsp;m wind above 20&nbsp;mph (32&nbsp;km/h). Numbers above each day are the high/low, the precipitation total
   (from 0.1&nbsp;in / 2.5&nbsp;mm) and any new snow. Hover a strip for the details; on touch screens tap a strip, and tap the place name to open its meteogram.
+  Places tagged Climb also show three pills above each day (morning, midday, afternoon: the daylight hours split in thirds) colored by the Climbing Index, a rough heuristic.
 </div>
 <div class="note" id="noteTbl">
   Table view: the overview shows each place&rsquo;s local calendar days, starting with its today (a small italic date in a cell means
   that place&rsquo;s day differs from the column heading, which follows the first place). Cells show the daytime weather icon,
   high and low, total precipitation as liquid-water equivalent with the highest chance and a rain/snow bar, peak 10&nbsp;m wind with its
-  prevailing direction (amber above 15&nbsp;mph / 25&nbsp;km/h, red above 25&nbsp;mph / 40&nbsp;km/h), new snow depth and the mean freezing level in daylight.
+  prevailing direction (amber above 15&nbsp;mph / 25&nbsp;km/h, red above 25&nbsp;mph / 40&nbsp;km/h), new snow depth and the mean freezing level in daylight. Places tagged Climb add three pills (morning, midday, afternoon) colored by the
+  Climbing Index, and a Climb column with the mean index of the ranked days.
 </div>
 <div class="note">
   Both views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
@@ -329,6 +358,14 @@
   values (precipitation summed, precipitation probability at its maximum, other variables averaged).
   At 14 and 16 days the shaded bands in the meteograms are the 10th&ndash;90th percentile spread of the 31-member NOAA GEFS ensemble.
   The red dashed line is the current time. Times are each place&rsquo;s local time; the crosshair marks the same instant on every chart.
+</div>
+
+<div class="note">
+  Best climbing: a rough, hand-tuned score from 0 to 100 for each daylight hour, averaged over the day and then over the days you rank. It is a heuristic, not a validated
+  model, and it knows nothing about a crag&rsquo;s aspect or shade, so read it with your own knowledge of the walls. The score starts from how pleasant the
+  temperature feels on the rock (your ideal &plusmn; the width, with a little warmth added for sun and taken away for wind; the Walls setting says how sunny the walls you
+  plan for are) and how far the air is from saturation (muggy air scores low). It is then cut down for rain chance, thunderstorms, strong wind, and for rock that is
+  probably still wet or icy, which the page estimates by tracking rain over the last few days and how fast sun, wind and dry air would have dried it. Only places tagged Climb get a score.
 </div>
 
 <footer>
@@ -371,10 +408,44 @@ var PRECIP_CODE_HOURS = 3;      // daytime hours with a precipitating code befor
 var PRECIP_FULL_MM = 15;        // daily liquid-water equivalent that gives the darkest precipitation shade / full bar
 var SNOW_FULL_CM = 30;          // daily new snow that gives the darkest snow shade
 var TEMP_TINT_C = [-20, 35];    // daily temperatures mapped from blue to red
-var SORTS = [['dry', 'Driest'], ['calm', 'Calmest'], ['warm', 'Warmest'], ['cool', 'Coolest'], ['sun', 'Sunniest'], ['cloud', 'Cloudiest'], ['snow', 'Most new snow']];
+var SORTS = [['climb', 'Best climbing'], ['dry', 'Driest'], ['calm', 'Calmest'], ['warm', 'Warmest'], ['cool', 'Coolest'], ['sun', 'Sunniest'], ['cloud', 'Cloudiest'], ['snow', 'Most new snow']];
+// Climbing Index heuristic (no validated method exists). Temperatures are defined in round degF and converted to degC; dF = a difference.
+function fToC(f) { return (f - 32) * 5 / 9; }
+function dFToC(d) { return d * 5 / 9; }
+var CLIMB = {
+  idealC: fToC(60), widthC: dFToC(10), rampC: dFToC(20),   // default ideal and half-width of the full-score plateau (50-70 degF); score ramps to 0 over rampC either side
+  sunOffsetC: { sun: dFToC(15), mixed: dFToC(5), shade: 0 },   // Teff gain at full sun, by Sun knob
+  sunDefault: 'mixed',
+  chillK: 0.8,                  // degC lost per sqrt(km/h of wind above 5 km/h)
+  chillFreeKmh: 5,
+  kDry: 0.15,                   // mm/h dried per kPa of vapor pressure deficit, before wind and sun multipliers
+  aWind: 0.03,                  // drying gain per km/h of wind
+  bSun: 1,                      // drying gain at full sun
+  dewMm: 0.05,                  // mm/h gained when the dew point reaches Teff
+  bMax: 6,                      // bucket ceiling, mm
+  wetLo: 0.2, wetHi: 3,         // gate is 1 at or below wetLo mm and 0 at wetHi mm
+  stormMul: 0.3,                // gate multiplier for thunderstorm codes 95-99
+  iceMul: 0.2,                  // gate multiplier when Teff is below iceBelowC and the rock is damp
+  iceBelowC: fToC(32),
+  windLo: 40, windHi: 70,       // sustained 10 m wind, km/h: gate 1 up to windLo, 0 at windHi
+  spreadLo: dFToC(5), spreadHi: dFToC(20)   // dew-point spread: moisture score 0 at spreadLo, 1 at spreadHi
+};
+var CLIMB_TAG = 'Climb';        // only places with this tag are ranked by Best climbing
+// Climbing Index display scale: five discrete stop-light bands, one color set per theme (the dark set is lifted to stay legible on a dark surface).
+// A band starts at its lower edge (poor < 20, low 20-40, fair 40-60, good 60-80, prime 80+); `none` is the neutral pill for "no score";
+// fg is the readable text color on each band fill (used by the Climb column)
+var CLIMB_BANDS = {
+  edges: [20, 40, 60, 80],
+  names: ['poor', 'low', 'fair', 'good', 'prime'],
+  light: { bg: ['#d1453b', '#e8873a', '#e3b83a', '#7fc46a', '#2a8a46'], fg: ['#ffffff', '#1f2328', '#1f2328', '#1f2328', '#ffffff'], none: '#c4ccd4' },
+  dark:  { bg: ['#f0605a', '#f0883e', '#e3b341', '#8bd17c', '#2ea043'], fg: ['#0d1117', '#0d1117', '#0d1117', '#0d1117', '#ffffff'], none: '#4a525c' }
+};
+var CLIMB_PILLS = { h: 6, gap: 1, maxW: 24, sep: 2, pad: 5 };   // graphic view: pill row above the strip of a Climb place, CSS px (+ gap below); pill max width, spacing, side padding in the day column
+var THIRD_NAMES = ['morning', 'midday', 'afternoon'];
 var VIEWS = ['graphic', 'table'];   // overview styles; the first is the default
 var KMH_PER_MPH = 1.609344;
-var PAST_DAYS = 1;              // extra day requested before today, only to seed the rolling 24 h precipitation window
+var CLIMB_DEBUG = (/[?&]climbdebug=(\d{1,2})(?:&|$)/.exec(location.search) || [])[1];   // dev only: ?climbdebug=N requests N past days and tables the daily index
+var PAST_DAYS = CLIMB_DEBUG != null ? Math.min(92, +CLIMB_DEBUG) : 3;   // extra days requested before today, only to seed the rolling 24 h precipitation window and the climbing wetness bucket
 var ROLL_HOURS = 24;            // rolling precipitation window
 var ROLL_FULL_MM = 25.4;        // graphic view: the 24 h total line reaches the top of the lane at this (1 in), linear scale; more is capped
 var ROLL_MIN_MM = 0.05;         // smaller 24 h totals are not drawn (line breaks)
@@ -484,14 +555,14 @@ function pal() {
     temp: '#D55E00', app: '#CC79A7', hum: '#0072B2', dew: '#009E73',
     rain: '#0072B2', snow: '#9ccbea', snowEdge: '#4f94c4', prob: '#7b4fc9', frz: '#0072B2',
     cloud: '#57606a', sun: '#E69F00', wind: '#0969da', roll: '#0a1a4a', rollHalo: 'rgba(255,255,255,0.85)',
-    sunIcon: '#e69f00', moonIcon: '#8c959f', cloudIcon: '#a8b1ba', cloudDark: '#6e7781', bolt: '#d4a72c'
+    sunIcon: '#e69f00', moonIcon: '#8c959f', cloudIcon: '#a8b1ba', cloudDark: '#6e7781', bolt: '#d4a72c', climb: CLIMB_BANDS.light
   } : {
     text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), danger: v('--danger'),
     night: 'rgba(255,255,255,0.05)', grid: 'rgba(139,148,158,0.22)', day: 'rgba(139,148,158,0.5)',
     temp: '#E69F00', app: '#CC79A7', hum: '#56B4E9', dew: '#2DBE8C',
     rain: '#56B4E9', snow: '#e6edf3', snowEdge: '#9fb3c8', prob: '#b18cf0', frz: '#56B4E9',
     cloud: '#c9d1d9', sun: '#e8c23c', wind: '#58a6ff', roll: '#ffffff', rollHalo: 'rgba(13,17,23,0.85)',
-    sunIcon: '#f0b429', moonIcon: '#c9d1d9', cloudIcon: '#8b949e', cloudDark: '#6e7681', bolt: '#f0c53d'
+    sunIcon: '#f0b429', moonIcon: '#c9d1d9', cloudIcon: '#8b949e', cloudDark: '#6e7681', bolt: '#f0c53d', climb: CLIMB_BANDS.dark
   };
 }
 
@@ -508,6 +579,8 @@ var VIEW = VIEWS[0];      // overview style: 'graphic' strips or 'table' text ce
 var ROW_H = ROWH.def;     // graphic row height, CSS px
 var SPPH = MIN_SPPH.short;   // strip pixels per hour (graphic view)
 var SORT = 'dry';         // ranking metric
+var CLIMB_IDEAL = CLIMB.idealC, CLIMB_WIDTH = CLIMB.widthC;   // Best climbing: ideal temperature and plateau half-width, degC
+var SUN_KNOB = CLIMB.sunDefault;   // Best climbing: 'sun' | 'mixed' | 'shade' walls
 var TAGFILTER = [];       // selected activity tags (empty = show all places)
 var GROUP = false;        // group rows under each place's first tag
 var TARGET = null;        // ranked day columns {a, b, anchor} (indices into the shown days), null = saved order
@@ -796,11 +869,15 @@ function loadPrefs() {
     GROUP = o.group === true;
     if (VIEWS.indexOf(o.view) >= 0) VIEW = o.view;
     if (o.rowh >= ROWH.min && o.rowh <= ROWH.max) ROW_H = Math.round(o.rowh / ROWH.step) * ROWH.step;
+    if (typeof o.climbIdeal === 'number' && o.climbIdeal >= -20 && o.climbIdeal <= 45) CLIMB_IDEAL = o.climbIdeal;
+    if (typeof o.climbWidth === 'number' && o.climbWidth > 0 && o.climbWidth <= 20) CLIMB_WIDTH = o.climbWidth;
+    if (CLIMB.sunOffsetC.hasOwnProperty(o.sunKnob)) SUN_KNOB = o.sunKnob;
   } catch (e) {}
 }
 
 function savePrefs() {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP, view: VIEW, rowh: ROW_H })); } catch (e) {}
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: SORT, tags: TAGFILTER, group: GROUP, view: VIEW, rowh: ROW_H,
+      climbIdeal: CLIMB_IDEAL, climbWidth: CLIMB_WIDTH, sunKnob: SUN_KNOB })); } catch (e) {}
 }
 
 function loadSavedUnits() {
@@ -838,9 +915,7 @@ function removePlace(p) {
   if (p.el && p.el.root.parentNode) p.el.root.parentNode.removeChild(p.el.root);
   savePlaces();
   setStatus('');
-  renderHeader();
-  PLACES.forEach(renderCard);   // the shared precipitation scale may shrink
-  applyOrder();
+  renderAll();   // the Climb column may go away, and the shared precipitation scale may shrink
   updateStamp();
 }
 
@@ -991,11 +1066,17 @@ function parseForecast(j, p) {
   // Computed on the full hourly data, then the past day (requested only for this) is cut off so everything
   // else starts at the place's today 00:00.
   h.roll24 = rollingTotal(h.rainW, h.snowWE);
+  // Climbing Index on the same full series (the wetness bucket needs the past days); the full arrays are kept
+  // so a changed Sun knob / ideal temperature can recompute it
+  var cr = { raw: { time: h.time, t: h.temperature_2m, td: h.dew_point_2m, ws: h.wind_speed_10m, pr: h.precipitation,
+    pop: h.precipitation_probability, code: h.weather_code, sun: h.sunshine_duration, day: h.is_day }, seed: 0 };
+  setClimb(h, climbSeries(cr.raw, SUN_KNOB, CLIMB_IDEAL, CLIMB_WIDTH));
   var d0 = j.daily || {}, seed = 0;
   if (PAST_DAYS && Array.isArray(d0.time) && d0.time.length > FETCH_DAYS) {
     var today = d0.time[PAST_DAYS] * 1000;
     while (seed < n && h.time[seed] < today) seed++;
   }
+  cr.seed = seed;
   if (seed) {
     Object.keys(h).forEach(function(k) { h[k] = h[k].slice(seed); });
     n -= seed;
@@ -1012,7 +1093,89 @@ function parseForecast(j, p) {
   }
   var zone = { tz: j.timezone || null, off: j.utc_offset_seconds || 0 };
   p.zone = zone;
-  return { time: h.time, h: h, ups: ok ? ups : null, elev: j.elevation, zone: zone, n: n };
+  return { time: h.time, h: h, ups: ok ? ups : null, elev: j.elevation, zone: zone, n: n, cr: cr };
+}
+
+// ── Climbing Index ─────────────────────────────────────────────────────────
+// Magnus saturation vapor pressure, kPa (T in degC)
+function satVp(t) { return 0.6108 * Math.exp(17.27 * t / (t + 237.3)); }
+
+// Vapor pressure deficit, kPa, from air and dew point temperatures (degC); never negative
+function vpd(t, td) { return Math.max(0, satVp(t) - satVp(td)); }
+
+// 1 up to `lo`, falling linearly to 0 at `hi`
+function fallOff(x, lo, hi) { return x <= lo ? 1 : x >= hi ? 0 : (hi - x) / (hi - lo); }
+
+// Trapezoid: 1 within `width` of `ideal`, linear to 0 over `ramp` beyond (all degC)
+function trapezoid(t, ideal, width, ramp) { return clamp(1 - (Math.abs(t - ideal) - width) / ramp, 0, 1); }
+
+// Effective temperature, degC: air temperature plus a sun gain, minus a wind chill
+function effTemp(t, ws, sunFrac, knob) {
+  return t + CLIMB.sunOffsetC[knob] * sunFrac - CLIMB.chillK * Math.sqrt(Math.max(0, ws - CLIMB.chillFreeKmh));
+}
+
+// Gate 0..1: wet rock (bucket mm), rain chance %, thunderstorm code, ice on damp rock, sustained wind km/h
+function climbGate(b, pop, code, teff, ws) {
+  var g = fallOff(b, CLIMB.wetLo, CLIMB.wetHi) * (1 - pop / 100);
+  if (code >= 95 && code <= 99) g *= CLIMB.stormMul;
+  if (teff < CLIMB.iceBelowC && b > CLIMB.wetLo) g *= CLIMB.iceMul;
+  return g * fallOff(ws, CLIMB.windLo, CLIMB.windHi);
+}
+
+// Quality 0..1: temperature trapezoid times dew-point spread (muggy air scores low); teff and td in degC
+function climbQuality(teff, td, ideal, width) {
+  var moist = clamp((teff - td - CLIMB.spreadLo) / (CLIMB.spreadHi - CLIMB.spreadLo), 0, 1);
+  return trapezoid(teff, ideal, width, CLIMB.rampC) * moist;
+}
+
+// Per-hour effective temperature, wetness bucket (mm) and index (0-100, null without temperature or dew point)
+// for the full series r. Missing precipitation, rain chance, wind and sunshine count as 0.
+function climbSeries(r, knob, ideal, width) {
+  var n = r.t.length, out = { teff: [], b: [], idx: [] }, b = 0;
+  for (var i = 0; i < n; i++) {
+    var t = r.t[i], td = r.td[i];
+    if (t == null || td == null || !isFinite(t) || !isFinite(td)) { out.teff.push(null); out.b.push(b); out.idx.push(null); continue; }
+    var ws = r.ws[i] || 0, sf = clamp((r.sun[i] || 0) / 3600, 0, 1), pr = r.pr[i] || 0;
+    var te = effTemp(t, ws, sf, knob);
+    b += pr;
+    b -= CLIMB.kDry * vpd(t, td) * (1 + CLIMB.aWind * ws) * (1 + CLIMB.bSun * sf);
+    if (td >= te) b += CLIMB.dewMm;
+    b = clamp(b, 0, CLIMB.bMax);
+    var g = climbGate(b, r.pop[i] || 0, r.code[i], te, ws);
+    out.teff.push(te); out.b.push(b); out.idx.push(100 * g * climbQuality(te, td, ideal, width));
+  }
+  return out;
+}
+
+function setClimb(h, c) { h.teff = c.teff; h.climbB = c.b; h.climb = c.idx; }
+
+// Recompute every place's index after the Sun knob / ideal / width changed (same series, same trimming)
+function recomputeClimb() {
+  PLACES.forEach(function(p) {
+    if (!p.data || !p.data.cr) return;
+    var c = climbSeries(p.data.cr.raw, SUN_KNOB, CLIMB_IDEAL, CLIMB_WIDTH), s = p.data.cr.seed;
+    setClimb(p.data.h, { teff: c.teff.slice(s), b: c.b.slice(s), idx: c.idx.slice(s) });
+    prepareDays(p);
+  });
+}
+
+// Dev only (?climbdebug=N): daily index, daylight mean, per Climb place by local date over the past days too
+function climbDebugTable() {
+  var rows = {};
+  PLACES.forEach(function(p) {
+    if (!p.data || !p.data.cr || p.tags.indexOf(CLIMB_TAG) < 0) return;
+    var r = p.data.cr.raw, c = climbSeries(r, SUN_KNOB, CLIMB_IDEAL, CLIMB_WIDTH), acc = {};
+    for (var i = 0; i < r.time.length; i++) {
+      if (r.day[i] !== 1 || c.idx[i] == null) continue;
+      var w = zparts(p, r.time[i]), k = w.y * 10000 + w.mo * 100 + w.d;
+      (acc[k] = acc[k] || []).push(c.idx[i]);
+    }
+    Object.keys(acc).forEach(function(k) {
+      var a = acc[k], lbl = String(k).replace(/^(\d{4})(\d\d)(\d\d)$/, '$1-$2-$3');
+      (rows[lbl] = rows[lbl] || {})[p.label] = Math.round(a.reduce(function(x, y) { return x + y; }, 0) / a.length);
+    });
+  });
+  console.table(rows);
 }
 
 // Trailing ROLL_HOURS-hour sum of rain + snow water equivalent ending at each stamp (mm); a window that
@@ -1080,6 +1243,7 @@ function loadPlace(p) {
         renderHeader();
         applyOrder(true);
         updateStamp();
+        if (CLIMB_DEBUG != null && !pending) climbDebugTable();
         if (p.status === 'ok' && p.open && (DAYS >= ENS_MIN_DAYS || p.ens)) loadEnsemble(p);
       }
     });
@@ -1292,6 +1456,15 @@ function dayStats(p, a, b, w) {
   for (i = a; i < b; i++) { all.push(i); if (h.is_day[i] === 1) day.push(i); }
   if (!day.length) day = all;      // polar night or missing is_day
   var rain = agg(h.rainW, a, b, 'sum'), snow = agg(h.snowWE, a, b, 'sum');
+  var cl = [];
+  var dl = [];   // strictly daylight hours (no whole-day fallback: the index is a daylight measure)
+  for (i = a; i < b; i++) if (h.is_day[i] === 1) { dl.push(i); if (h.climb[i] != null) cl.push(h.climb[i]); }
+  // morning / midday / afternoon: the daylight hours split into three roughly equal parts, mean index of each (null if none)
+  var th = [0, 1, 2].map(function(t) {
+    var v = [];
+    for (var j = Math.floor(t * dl.length / 3); j < Math.floor((t + 1) * dl.length / 3); j++) if (h.climb[dl[j]] != null) v.push(h.climb[dl[j]]);
+    return agg(v, 0, v.length, 'mean');
+  });
   return {
     key: w.y * 10000 + w.mo * 100 + w.d, wd: w.wd, mo: w.mo, d: w.d,
     hi: agg(h.temperature_2m, a, b, 'max'), lo: agg(h.temperature_2m, a, b, 'min'),
@@ -1301,7 +1474,9 @@ function dayStats(p, a, b, w) {
     prob: agg(h.precipitation_probability, a, b, 'max'),
     ws: agg(h.wind_speed_10m, a, b, 'max'), dir: aggDir(h.wind_direction_10m, h.wind_speed_10m, a, b),
     frz: agg(pick(h.freezing_level_height, day), 0, day.length, 'mean'),
-    cloud: agg(pick(h.cloud_cover, day), 0, day.length, 'mean')
+    cloud: agg(pick(h.cloud_cover, day), 0, day.length, 'mean'),
+    climb: agg(cl, 0, cl.length, 'mean'),
+    climbThirds: th
   };
 }
 
@@ -2051,6 +2226,16 @@ function cloudColor(c, P) {
   return rgbStr([0, 1, 2].map(function(j) { return Math.round(a[j] + (b[j] - a[j]) * f); }));
 }
 
+// Climbing Index (0-100) -> band index 0-4 (null score -> -1); fill and text colors come from the palette
+function climbBand(sc) {
+  if (sc == null || !isFinite(sc)) return -1;
+  var e = CLIMB_BANDS.edges, i = 0;
+  while (i < e.length && sc >= e[i]) i++;
+  return i;
+}
+function climbBg(sc, P) { var b = climbBand(sc); return b < 0 ? P.climb.none : P.climb.bg[b]; }
+function climbFg(sc, P) { return P.climb.fg[Math.max(0, climbBand(sc))]; }
+
 // Chart palette plus the strip-only colors (bars sit on tinted lanes, so they differ from the meteogram's)
 function stripPal() {
   var P = pal(), light = document.documentElement.classList.contains('light');
@@ -2067,18 +2252,23 @@ function stripPal() {
   return P;
 }
 
+// Extra strip height of a Climb place's pill row, CSS px (other rows keep the plain strip height)
+function laneExtra(p) { return p.tags.indexOf(CLIMB_TAG) >= 0 ? CLIMB_PILLS.h + CLIMB_PILLS.gap : 0; }
+
 function sxOf(g, t) { return (t - g.x0) / HOUR_MS * SPPH; }
 
 function drawStrip(p, P) {
   var e = p.el, S = buildSeries(p);
   if (!S.n) { p.sg = null; return; }
-  var W = Math.round(DAYS * 24 * SPPH), H = STRIP.h;
+  var W = Math.round(DAYS * 24 * SPPH), H = STRIP.h, lane = laneExtra(p);
   var g = { p: p, S: S, P: P, W: W, H: H, x0: S.t[0] };
   p.sg = { S: S, x0: g.x0, W: W };
-  var ctx = setupCanvas(e.scanvas, W, H);
+  var ctx = setupCanvas(e.scanvas, W, H + lane);
   e.scanvas.setAttribute('aria-label', p.label + ' forecast strip');
   var x1 = g.x0 + S.hours * HOUR_MS, i;
 
+  ctx.save();
+  ctx.translate(0, lane);   // Climb rows: the strip sits below the pill row
   drawStripTint(ctx, g);
   ctx.fillStyle = P.nightB;
   nightSpans(p, S, g.x0, x1).forEach(function(sp) {
@@ -2111,6 +2301,30 @@ function drawStrip(p, P) {
   drawStripRoll(ctx, g);
   drawStripWind(ctx, g);
   drawStripDaily(ctx, g);
+  ctx.restore();
+  if (lane) drawStripPills(ctx, g);
+}
+
+// Climb places: three pills per local day above the strip (morning, midday, afternoon), centered in the day column,
+// colored by the stop-light band of that third's mean index (neutral pill = no score)
+function drawStripPills(ctx, g) {
+  var p = g.p, P = g.P, daily = p.data.daily, days = p.data.days, maxT = g.x0 + g.S.hours * HOUR_MS, C = CLIMB_PILLS, r = C.h / 2;
+  for (var d = 0; d < days.length; d++) {
+    if (days[d].t >= maxT) break;
+    var xa = sxOf(g, days[d].t), xb = sxOf(g, d + 1 < days.length ? Math.min(days[d + 1].t, maxT) : maxT);
+    var th = daily[d] && daily[d].climbThirds;
+    var w = Math.min(C.maxW, (xb - xa - 2 * C.pad - 2 * C.sep) / 3);
+    if (!th || w < 3) continue;
+    var x0 = (xa + xb) / 2 - (3 * w + 2 * C.sep) / 2;
+    for (var t = 0; t < 3; t++) {
+      var x = x0 + t * (w + C.sep);
+      ctx.fillStyle = climbBg(th[t], P);
+      ctx.beginPath();
+      ctx.moveTo(x + r, 0); ctx.lineTo(x + w - r, 0); ctx.arc(x + w - r, r, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(x + r, C.h); ctx.arc(x + r, r, r, Math.PI / 2, 3 * Math.PI / 2);
+      ctx.closePath(); ctx.fill();
+    }
+  }
 }
 
 // Top half tinted by cloud cover (clear -> overcast), bottom half by temperature, one block per sample
@@ -2314,7 +2528,7 @@ function clearCursor() {
 function renderStripMsg(p) {
   var e = p.el, bad = p.status === 'error' && p.err;
   p.sg = null;
-  setupCanvas(e.scanvas, Math.round(DAYS * 24 * SPPH), STRIP.h);
+  setupCanvas(e.scanvas, Math.round(DAYS * 24 * SPPH), STRIP.h + laneExtra(p));
   e.smsg.innerHTML = bad ? esc('Could not load forecast: ' + p.err) + '<button type="button" class="retry">Retry</button>' : 'Loading…';
   e.smsg.className = 'gmsg' + (bad ? ' bad' : '');
   e.smsg.hidden = false;
@@ -2350,10 +2564,22 @@ function renderLegend() {
     '<span class="vd">Numbers: high/low ' + u.temp.u + ' · precipitation total ' + u.precip.u + ' (&ge; ' + u.precip.dayMin + ') · new snow ' + u.snow.u + ' (&gt; 0). ' +
       (DAYS > HOURLY_MAX_DAYS ? 'Beyond ' + HOURLY_MAX_DAYS + ' days values are ' + AGG_HOURS + '-hourly.' : 'Hourly values.') + '</span>'
   ];
+  if (climbColOn()) {
+    var cb = CLIMB_BANDS.names.map(function(n, i) {
+      var lo = i ? CLIMB_BANDS.edges[i - 1] : 0, hi = i < CLIMB_BANDS.edges.length ? CLIMB_BANDS.edges[i] : 100;
+      return '<span><i class="pill" style="background:' + P.climb.bg[i] + '"></i>' + n + ' ' + (i < CLIMB_BANDS.edges.length ? lo + '–' + hi : lo + '+') + '</span>';
+    }).join('');
+    parts.splice(parts.length - 1, 0,
+      '<span><b style="color:var(--text);font-weight:600">Climbing Index</b>&nbsp;(Climb places): morning · midday · afternoon pills above each day</span>' + cb +
+      '<span><i class="pill" style="background:' + P.climb.none + '"></i>no score</span>');
+  }
   lg.innerHTML = parts.join('');
 }
 
 // ── Overview grid ──────────────────────────────────────────────────────────
+// The table view's Climb column is shown while any place carries the Climb tag
+function climbColOn() { return PLACES.some(function(p) { return p.tags.indexOf(CLIMB_TAG) >= 0; }); }
+
 function refPlace() {
   for (var i = 0; i < PLACES.length; i++) if (PLACES[i].data && PLACES[i].data.daily) return PLACES[i];
   return null;
@@ -2366,6 +2592,7 @@ function renderHeader() {
   var html = '<div class="gcorner">' + (gfx ? '<div>' + count + '<br><span style="text-transform:none">' +
              u.temp.u + ' · ' + u.precip.u + ' · ' + u.wind.u + '</span></div>' : count) + '</div>';
   var dayW = 24 * SPPH, btns = '';
+  if (!gfx && climbColOn()) html += '<div class="hdc"><b>Climb</b><span>' + (TARGET && TARGET.a === TARGET.b ? 'day' : 'span') + '</span></div>';
   for (var k = 0; k < DAYS; k++) {
     var d = ref && ref.data.daily[k];
     var on = TARGET && k >= TARGET.a && k <= TARGET.b;
@@ -2413,7 +2640,17 @@ function precipAlpha(mm, prob) {
   return Math.min(0.5, 0.45 * Math.pow(clamp(mm / PRECIP_FULL_MM, 0, 1), 0.6) + 0.12 * clamp(pr / 100, 0, 1));
 }
 
-function cellHtml(p, k, st, refKey) {
+// Table view, Climb places: three pills (morning, midday, afternoon) on the stop-light scale, neutral = no score
+function climbPills(p, st, P) {
+  if (p.tags.indexOf(CLIMB_TAG) < 0 || !st.climbThirds) return '';
+  var label = 'Climbing: ' + st.climbThirds.map(function(v, t) {
+    return THIRD_NAMES[t] + ' ' + (v == null ? 'no score' : Math.round(v));
+  }).join(', ');
+  return '<div class="gcp" role="img" aria-label="' + label + '" title="' + label + '">' +
+    st.climbThirds.map(function(v) { return '<i style="background:' + climbBg(v, P) + '"></i>'; }).join('') + '</div>';
+}
+
+function cellHtml(p, k, st, refKey, P) {
   var u = U(), tx = function(v) { return v == null ? '–' : Math.round(cv('temp', v)) + '°'; };
   var tot = st.total == null ? null : cv('precip', st.total);
   var ptxt = tot == null ? '–' : (tot < Math.pow(10, -u.precip.dp) / 2 ? '0' : tot.toFixed(u.precip.dp)) + ' ' + u.precip.u;
@@ -2439,7 +2676,7 @@ function cellHtml(p, k, st, refKey) {
     ' · precipitation ' + ptxt + ' water equivalent (rain ' + fv(cv('precip', st.rain), u.precip.dp) + ', snow ' + fv(cv('precip', st.snowWE), u.precip.dp) +
     '), chance up to ' + (st.prob == null ? '–' : Math.round(st.prob) + '%') + ' · wind up to ' + wtxt +
     ' · new snow ' + (sv == null ? '–' : fv(sv, u.snow.dp) + ' ' + u.snow.u) + ' · freezing level ' + ftxt + ' (daylight mean)';
-  return '<div class="gc" data-col="' + k + '" title="' + esc(title) + '">' +
+  return '<div class="gc" data-col="' + k + '" title="' + esc(title) + '">' + climbPills(p, st, P) +
     (st.key !== refKey ? '<span class="gdate">' + WD[st.wd] + ' ' + st.d + '</span>' : '') +
     '<div class="gtop"><canvas class="gi" data-code="' + (st.code == null ? '' : st.code) + '"></canvas>' +
     '<div class="temps"><span class="tt hi" style="' + tempTint(st.hi) + '">' + tx(st.hi) + '</span>' +
@@ -2456,6 +2693,7 @@ function renderRow(p, P) {
   if (!e) return;
   var host = e.cells;
   e.cellEls = [];
+  renderClimbCol(p, P || (VIEW === 'graphic' ? stripPal() : pal()));
   if (VIEW === 'graphic') {
     host.innerHTML = '';
     renderStrip(p, P);
@@ -2473,7 +2711,7 @@ function renderRow(p, P) {
   }
   P = P || pal();
   var ref = refPlace(), html = '', n = Math.min(DAYS, p.data.daily.length);
-  for (var k = 0; k < n; k++) html += cellHtml(p, k, p.data.daily[k], ref && ref.data.daily[k] ? ref.data.daily[k].key : null);
+  for (var k = 0; k < n; k++) html += cellHtml(p, k, p.data.daily[k], ref && ref.data.daily[k] ? ref.data.daily[k].key : null, P);
   host.innerHTML = html;
   var cs = host.children;
   for (k = 0; k < cs.length; k++) {
@@ -2485,6 +2723,32 @@ function renderRow(p, P) {
   markTarget(p);
 }
 
+// Mean daily Climbing Index over the ranked days, whole number (the value Best climbing sorts by); null without a target, a score or the tag
+function climbSpan(p) {
+  var d = p.data && p.data.daily;
+  if (!d || !TARGET || TARGET.b >= d.length || p.tags.indexOf(CLIMB_TAG) < 0) return null;
+  var sum = 0, n = TARGET.b - TARGET.a + 1;
+  for (var k = TARGET.a; k <= TARGET.b; k++) {
+    if (d[k].climb == null) return null;
+    sum += d[k].climb;
+  }
+  return Math.round(sum / n);
+}
+
+// Table view Climb column cell: span mean in a pill on the stop-light scale, a dash for other places or when nothing is ranked
+function renderClimbCol(p, P) {
+  var el = p.el.climb;
+  if (VIEW !== 'table') { el.innerHTML = ''; return; }
+  var m = climbSpan(p), sub = '';
+  if (m != null) sub = TARGET.a === TARGET.b ? 'day' : 'mean';
+  else if (p.tags.indexOf(CLIMB_TAG) < 0) sub = 'not tagged';
+  else if (!TARGET) sub = 'pick a day';
+  el.innerHTML = m == null ? '<span class="sc none">–</span><span class="scsub">' + sub + '</span>'
+    : '<span class="sc" style="background:' + climbBg(m, P) + ';color:' + climbFg(m, P) + '" title="Climbing Index, ' +
+      (TARGET.a === TARGET.b ? 'daylight mean for the ranked day' : 'mean of the daily index over the ranked days') + '">' + m + '</span><span class="scsub">' + sub + '</span>';
+}
+function renderClimbCols() { var P = pal(); PLACES.forEach(function(p) { renderClimbCol(p, P); }); }
+
 function markTarget(p) {
   (p.el.cellEls || []).forEach(function(c, k) {
     c.classList.toggle('tcol', !!TARGET && k >= TARGET.a && k <= TARGET.b);
@@ -2495,7 +2759,8 @@ function markTarget(p) {
 function sortKey(p) {
   var d = p.data && p.data.daily;
   if (!d || !TARGET || TARGET.b >= d.length) return null;
-  var field = { dry: 'total', calm: 'ws', warm: 'hi', cool: 'hi', sun: 'cloud', cloud: 'cloud', snow: 'snowCm' }[SORT];
+  if (SORT === 'climb' && p.tags.indexOf(CLIMB_TAG) < 0) return null;   // untagged places sort last, no value
+  var field = { climb: 'climb', dry: 'total', calm: 'ws', warm: 'hi', cool: 'hi', sun: 'cloud', cloud: 'cloud', snow: 'snowCm' }[SORT];
   var sum = 0, mx = -Infinity, prob = 0, n = TARGET.b - TARGET.a + 1;
   for (var k = TARGET.a; k <= TARGET.b; k++) {
     var v = d[k][field];
@@ -2506,6 +2771,7 @@ function sortKey(p) {
   // rounded so negligible differences fall through to the tiebreak
   function r(x, q) { return Math.round(x / q) * q; }
   switch (SORT) {
+    case 'climb': return [-r(sum / n, 1)];         // span mean of the daily index
     case 'dry':  return [r(sum, 0.1), prob];       // span total, then highest chance
     case 'calm': return [r(mx, 1)];                // span maximum
     case 'warm': return [-r(mx, 0.1)];
@@ -2602,6 +2868,7 @@ function setTarget(t) {
     b.setAttribute('aria-pressed', String(!!t && k >= t.a && k <= t.b));
   });
   PLACES.forEach(markTarget);
+  renderClimbCols();
   placeBands();
   syncViewBar();
   applyOrder(true);
@@ -2620,7 +2887,33 @@ function onHeaderClick(k, shift) {
   }
 }
 
+// Best climbing controls: shown only while ranking by it, in the user's units (imperial steps 5 degF)
+function syncClimbCtl() {
+  document.getElementById('climbGrp').hidden = SORT !== 'climb';
+  if (SORT !== 'climb') return;
+  var imp = UNIT === 'imperial', toU = imp ? fToC : function(c) { return c; };
+  function fill(id, cur, vals, fromU) {   // options in display units holding the stored degC; selects the nearest
+    var sel = document.getElementById(id), best = 0, i;
+    sel.innerHTML = '';
+    for (i = 0; i < vals.length; i++) {
+      var o = document.createElement('option');
+      o.value = vals[i];
+      o.textContent = vals[i] + (imp ? '°F' : '°C');
+      sel.appendChild(o);
+      if (Math.abs(fromU(vals[i]) - cur) < Math.abs(fromU(vals[best]) - cur)) best = i;
+    }
+    sel.selectedIndex = best;
+  }
+  var ideals = [], widths = [], v;
+  for (v = imp ? 30 : 0; v <= (imp ? 90 : 32); v += imp ? 5 : 1) ideals.push(v);
+  for (v = imp ? 5 : 1; v <= (imp ? 30 : 15); v += imp ? 5 : 1) widths.push(v);
+  fill('climbIdeal', CLIMB_IDEAL, ideals, imp ? fToC : function(x) { return x; });
+  fill('climbWidth', CLIMB_WIDTH, widths, imp ? dFToC : function(x) { return x; });
+  document.getElementById('sunKnob').value = SUN_KNOB;
+}
+
 function syncViewBar() {
+  syncClimbCtl();
   var chips = document.getElementById('filterChips').children, i;
   for (i = 0; i < chips.length; i++) {
     chips[i].setAttribute('aria-pressed', String(TAGFILTER.indexOf(chips[i].getAttribute('data-tag')) >= 0));
@@ -2664,13 +2957,15 @@ function toggleTag(p, tag) {
   p.tags = cleanTags(p.tags);
   syncTagBtns(p);
   savePlaces();
-  applyOrder();
+  if (tag === CLIMB_TAG) renderAll();   // pills, Climb column and legend follow the tag (renderAll also reorders)
+  else applyOrder();
 }
 
 function syncTagBtns(p) {
   p.el.tagBtns.forEach(function(b) {
     b.setAttribute('aria-pressed', String(p.tags.indexOf(b.getAttribute('data-tag')) >= 0));
   });
+  p.el.root.classList.toggle('hasclimb', p.tags.indexOf(CLIMB_TAG) >= 0);
 }
 
 // ── Row DOM: pinned name cell, day cells, and the collapsible meteogram ────
@@ -2696,6 +2991,7 @@ function buildCard(p) {
         '</div>' +
         '<div class="gstale" hidden>Refresh failed <button type="button" class="retry">Retry</button></div>' +
       '</div>' +
+      '<div class="gclimb"></div>' +
       '<div class="gcells"></div>' +
       '<div class="strip"><canvas role="img"></canvas><div class="band" hidden></div><div class="cur" hidden></div><div class="gmsg" hidden></div></div>' +
     '</div>' +
@@ -2716,7 +3012,7 @@ function buildCard(p) {
     '</div></div>';
   var q = function(s) { return root.querySelector(s); };
   p.el = {
-    root: root, row: q('.grow'), cells: q('.gcells'), cellEls: [], strip: q('.strip'), scanvas: q('.strip canvas'),
+    root: root, row: q('.grow'), climb: q('.gclimb'), cells: q('.gcells'), cellEls: [], strip: q('.strip'), scanvas: q('.strip canvas'),
     band: q('.band'), cur: q('.cur'), smsg: q('.strip .gmsg'), rank: q('.rank'), grip: q('.grip'), cnb: q('.cnb'),
     stale: q('.gstale'), detail: q('.gdetail'), tagBtns: [].slice.call(root.querySelectorAll('.tag')),
     name: q('.cname'), meta: q('.cmeta'), ctime: q('.ctime'), err: q('.cerr'), msg: q('.msg'),
@@ -2833,6 +3129,7 @@ function renderAll() {
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');   // open meteograms are as wide as the visible grid
   g.classList.toggle('gfx', VIEW === 'graphic');
+  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
   document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   computePph();
   computeSpph();
@@ -2842,6 +3139,7 @@ function renderAll() {
   syncNotes();
   PLACES.forEach(function(p) { renderCardState(p); renderRow(p, P); renderCard(p); });
   updateCursor();
+  syncClimbCtl();   // option labels follow the unit
   applyOrder();
 }
 
@@ -2898,6 +3196,8 @@ function applyRowH() {
   STRIP.barBase = h - 4;
   STRIP.barMax = Math.round(lane * 0.83);
   g.style.setProperty('--sh', h + 'px');
+  g.style.setProperty('--shb', h + 'px');   // Climb rows add the pill row on top of this
+  g.style.setProperty('--lh', (CLIMB_PILLS.h + CLIMB_PILLS.gap) + 'px');
   g.classList.toggle('lowrow', ROW_H < 50);
   document.getElementById('rowh').value = ROW_H;
   document.getElementById('rowhVal').textContent = ROW_H + ' px';
@@ -2990,6 +3290,26 @@ function setUnits(u) {
     syncViewBar();
     applyOrder(true);
   });
+  function climbChanged() {
+    savePrefs();
+    recomputeClimb();
+    var P = VIEW === 'graphic' ? stripPal() : pal();
+    PLACES.forEach(function(p) { renderRow(p, P); });   // pills and Climb column follow the new scores
+    syncViewBar();
+    applyOrder(true);
+  }
+  document.getElementById('climbIdeal').addEventListener('change', function(e) {
+    CLIMB_IDEAL = UNIT === 'imperial' ? fToC(+e.target.value) : +e.target.value;
+    climbChanged();
+  });
+  document.getElementById('climbWidth').addEventListener('change', function(e) {
+    CLIMB_WIDTH = UNIT === 'imperial' ? dFToC(+e.target.value) : +e.target.value;
+    climbChanged();
+  });
+  document.getElementById('sunKnob').addEventListener('change', function(e) {
+    SUN_KNOB = e.target.value;
+    climbChanged();
+  });
   document.getElementById('spanBtn').addEventListener('click', function() {
     SPAN_MODE = !SPAN_MODE;
     syncViewBar();
@@ -3047,12 +3367,14 @@ setInterval(function() {
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
   g.classList.toggle('gfx', VIEW === 'graphic');
+  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
   document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   computePph();
   computeSpph();
   renderHeader();
   renderLegend();
   syncNotes();
+  syncClimbCtl();
   applyOrder();
   PLACES.forEach(function(p) { loadPlace(p); });
 })();
