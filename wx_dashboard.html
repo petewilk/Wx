@@ -165,13 +165,13 @@
   .gfx .tags{flex-wrap:nowrap;margin-top:3px}
   .gfx .gstale{position:absolute;left:calc(100% + 4px);bottom:3px;margin:0;padding:1px 6px;white-space:nowrap;z-index:2;
     background:var(--surface);border:1px solid var(--danger);border-radius:9px}
-  .legend{padding:6px 20px 8px;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:10px;color:var(--muted);align-items:center;border-bottom:1px solid var(--border)}
+  .legend{padding:6px 20px 8px;display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border)}
+  .legend .lr{display:flex;flex-wrap:wrap;gap:3px 14px;align-items:center}   /* one line per strip layer, in row order */
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .legend i{display:inline-block;width:12px;height:9px;border-radius:2px}
   .legend i.grad{width:46px}
   .legend i.pill{width:16px;height:6px;border-radius:3px}
   .legend i.wind{height:3px;width:14px}
-  .legend .vd{flex:1 1 100%}
   .tip{position:fixed;z-index:50;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;
     box-shadow:0 4px 14px rgba(0,0,0,.35);padding:7px 9px;font-size:11px;line-height:1.5;max-width:230px;font-variant-numeric:tabular-nums}
   .tip b{font-weight:600}
@@ -2464,6 +2464,22 @@ function binAt(p, ms) {
   return i < 0 || i >= S.n ? -1 : i;
 }
 
+// Day (index into p.data.days) holding hourly index hi, and which daylight third hi falls in (null at night)
+function dayOfHour(p, hi) {
+  var days = p.data.days, d = 0;
+  while (d + 1 < days.length && days[d + 1].i <= hi) d++;
+  return d;
+}
+
+function climbThirdOf(p, d, hi) {
+  var h = p.data.h, days = p.data.days, b = d + 1 < days.length ? days[d + 1].i : h.time.length, dl = [];
+  for (var i = days[d].i; i < b; i++) if (h.is_day[i] === 1) dl.push(i);
+  var j = dl.indexOf(hi);
+  return j < 0 ? null : Math.min(2, Math.floor(j * 3 / dl.length));
+}
+
+// Rows follow the strip from top to bottom: Climb pills, day numbers, cloud tint, temperature tint,
+// precipitation bars, rolling 24 h line, night shading, wind marker
 function tipHtml(p, ms) {
   var i = binAt(p, ms);
   if (i < 0) return '';
@@ -2473,16 +2489,26 @@ function tipHtml(p, ms) {
   tm += ' ' + zoneAbbr(p, S.t[i]);
   var wm = WMO[S.code[i]], cond = wm ? wm[0] : (S.code[i] == null ? '–' : 'Code ' + S.code[i]);
   var pu = function(v) { return v == null ? '–' : fv(cv('precip', v), u.precip.dp); };
-  var t = S.temp[i] == null ? '–' : fv(cv('temp', S.temp[i]), 0) + u.temp.u;
-  var sn = S.snowCm[i] == null ? '–' : fv(cv('snow', S.snowCm[i]), u.snow.dp) + ' ' + u.snow.u;
+  var tx = function(v) { return v == null ? '–' : fv(cv('temp', v), 0) + u.temp.u; };
+  var sn = function(v) { return v == null ? '–' : fv(cv('snow', v), u.snow.dp) + ' ' + u.snow.u; };
   var ws = S.ws[i] == null ? '–' : Math.round(cv('wind', S.ws[i])) + ' ' + u.wind.u + (S.dir[i] == null ? '' : ' ' + COMPASS[Math.round(S.dir[i] / 22.5) % 16]);
   var cl = S.cloud[i] == null ? '–' : Math.round(S.cloud[i]) + '%';
   var pb = S.prob[i] == null ? '–' : Math.round(S.prob[i]) + '%';
+  var hi = S.i0[i], d = dayOfHour(p, hi), st = p.data.daily[d];
   function row(a, b) { return '<div class="r"><span>' + a + '</span><span>' + b + '</span></div>'; }
-  return '<b>' + esc(p.label) + '</b><div class="tm">' + esc(tm) + (S.step > 1 ? ' (' + S.step + ' h mean/total)' : '') + '</div>' +
-    '<div class="t0"><b>' + esc(t) + '</b> · ' + esc(cond) + '</div>' +
-    row('Precip', pu(S.precip[i]) + ' ' + u.precip.u + ' (rain ' + pu(S.rain[i]) + ', snow ' + pu(S.snowWE[i]) + ' w.e.)') +
-    row('New snow', sn) + row('24h total', S.roll[i] == null ? '–' : pu(S.roll[i]) + ' ' + u.precip.u) + row('Chance', pb) + row('Wind', ws) + row('Cloud', cl);
+  var out = '<b>' + esc(p.label) + '</b><div class="tm">' + esc(tm) + (S.step > 1 ? ' (' + S.step + ' h mean/total)' : '') + '</div>';
+  if (p.tags.indexOf(CLIMB_TAG) >= 0 && st && st.climbThirds) {
+    var t3 = climbThirdOf(p, d, hi), v3 = t3 == null ? null : st.climbThirds[t3], hv = p.data.h.climb[hi];
+    out += row('Climbing', t3 == null ? 'night (daylight only)' :
+      THIRD_NAMES[t3] + ' ' + (v3 == null ? 'no score' : Math.round(v3) + ' ' + CLIMB_BANDS.names[climbBand(v3)]) +
+      (hv == null ? '' : ' · this hour ' + Math.round(hv)));
+  }
+  if (st) out += row('Day', tx(st.hi) + ' / ' + tx(st.lo) + ' · ' + pu(st.total) + ' ' + u.precip.u +
+    (st.snowCm != null && st.snowCm > 0 ? ' · new snow ' + sn(st.snowCm) : ''));
+  return out + row('Cloud', cl) + row('Temp', esc(tx(S.temp[i])) + ' · ' + esc(cond)) +
+    row('Precip', pu(S.precip[i]) + ' ' + u.precip.u + ' (rain ' + pu(S.rain[i]) + ', snow ' + pu(S.snowWE[i]) + ' w.e.) · ' + pb + ' chance') +
+    row('New snow', sn(S.snowCm[i])) + row('24h total', S.roll[i] == null ? '–' : pu(S.roll[i]) + ' ' + u.precip.u) +
+    row('Light', S.day[i] === 0 ? 'night' : 'daylight') + row('Wind', ws);
 }
 
 function showTip(p, ev) {
@@ -2552,28 +2578,28 @@ function renderLegend() {
   var P = stripPal(), u = U();
   function grad(stops) { return '<i class="grad" style="background:linear-gradient(90deg,' + stops.join(',') + ')"></i>'; }
   var tlo = Math.round(cv('temp', TEMP_STOPS_C[0])), thi = Math.round(cv('temp', TEMP_STOPS_C[TEMP_STOPS_C.length - 1]));
-  var parts = [
-    '<span>' + grad(P.cloudStops) + 'top half = cloud cover (clear → overcast)</span>',
-    '<span>' + grad(P.tint) + 'bottom half = temperature (' + tlo + u.temp.u + ' to ' + thi + u.temp.u + ')</span>',
-    '<span><i style="background:' + P.rainBar + '"></i>rain</span>',
-    '<span><i style="background:' + P.snowBar + '"></i>snow (water equivalent)</span>',
-    '<span><i class="wind" style="background:' + P.rollLine + ';box-shadow:0 0 0 1px ' + P.grid + '"></i>rolling 24 h precipitation (top = ' +
-      fv(cv('precip', ROLL_FULL_MM), u.precip.dp === 2 ? 1 : 0) + ' ' + u.precip.u + ', linear scale)</span>',
-    '<span><i class="wind" style="background:' + P.windMark + '"></i>sustained wind &gt; ' + Math.round(cv('wind', WIND_MARK_MPH * KMH_PER_MPH)) + ' ' + u.wind.u + '</span>',
-    '<span><i style="background:' + P.nightB + ';border:1px solid ' + P.grid + '"></i>night</span>',
-    '<span class="vd">Numbers: high/low ' + u.temp.u + ' · precipitation total ' + u.precip.u + ' (&ge; ' + u.precip.dayMin + ') · new snow ' + u.snow.u + ' (&gt; 0). ' +
-      (DAYS > HOURLY_MAX_DAYS ? 'Beyond ' + HOURLY_MAX_DAYS + ' days values are ' + AGG_HOURS + '-hourly.' : 'Hourly values.') + '</span>'
-  ];
+  // one line per layer, top to bottom in the same order as the strip draws them
+  var lines = [];
   if (climbColOn()) {
     var cb = CLIMB_BANDS.names.map(function(n, i) {
       var lo = i ? CLIMB_BANDS.edges[i - 1] : 0, hi = i < CLIMB_BANDS.edges.length ? CLIMB_BANDS.edges[i] : 100;
       return '<span><i class="pill" style="background:' + P.climb.bg[i] + '"></i>' + n + ' ' + (i < CLIMB_BANDS.edges.length ? lo + '–' + hi : lo + '+') + '</span>';
     }).join('');
-    parts.splice(parts.length - 1, 0,
-      '<span><b style="color:var(--text);font-weight:600">Climbing Index</b>&nbsp;(Climb places): morning · midday · afternoon pills above each day</span>' + cb +
+    lines.push('<span><b style="color:var(--text);font-weight:600">Climbing Index</b>&nbsp;(Climb places): morning · midday · afternoon pills above each day</span>' + cb +
       '<span><i class="pill" style="background:' + P.climb.none + '"></i>no score</span>');
   }
-  lg.innerHTML = parts.join('');
+  lines.push(
+    '<span>Numbers: high/low ' + u.temp.u + ' · precipitation total ' + u.precip.u + ' (&ge; ' + u.precip.dayMin + ') · new snow ' + u.snow.u + ' (&gt; 0). ' +
+      (DAYS > HOURLY_MAX_DAYS ? 'Beyond ' + HOURLY_MAX_DAYS + ' days values are ' + AGG_HOURS + '-hourly.' : 'Hourly values.') + '</span>',
+    '<span>' + grad(P.cloudStops) + 'top half = cloud cover (clear → overcast)</span>',
+    '<span>' + grad(P.tint) + 'bottom half = temperature (' + tlo + u.temp.u + ' to ' + thi + u.temp.u + ')</span>',
+    '<span><i style="background:' + P.rainBar + '"></i>rain</span><span><i style="background:' + P.snowBar + '"></i>snow (water equivalent)</span>',
+    '<span><i class="wind" style="background:' + P.rollLine + ';box-shadow:0 0 0 1px ' + P.grid + '"></i>rolling 24 h precipitation (top = ' +
+      fv(cv('precip', ROLL_FULL_MM), u.precip.dp === 2 ? 1 : 0) + ' ' + u.precip.u + ', linear scale)</span>',
+    '<span><i style="background:' + P.nightB + ';border:1px solid ' + P.grid + '"></i>night</span>',
+    '<span><i class="wind" style="background:' + P.windMark + '"></i>sustained wind &gt; ' + Math.round(cv('wind', WIND_MARK_MPH * KMH_PER_MPH)) + ' ' + u.wind.u + ' (bottom edge)</span>'
+  );
+  lg.innerHTML = lines.map(function(l) { return '<div class="lr">' + l + '</div>'; }).join('');
 }
 
 // ── Overview grid ──────────────────────────────────────────────────────────
@@ -2672,7 +2698,10 @@ function cellHtml(p, k, st, refKey, P) {
   var sstyle = snowOn ? ' style="background:' + rgba('snow', Math.min(0.5, 0.15 + 0.35 * clamp(st.snowCm / SNOW_FULL_CM, 0, 1))) + '"' : '';
   var ftxt = st.frz == null ? '–' : Math.round(cv('height', st.frz)).toLocaleString() + ' ' + u.height.u;
   var w = WMO[st.code];
-  var title = dayLabel(st) + ' · ' + (w ? w[0] : 'no weather code') + ' · high ' + tx(st.hi) + u.temp.u.slice(1) + ', low ' + tx(st.lo) + u.temp.u.slice(1) +
+  var climbTxt = p.tags.indexOf(CLIMB_TAG) >= 0 && st.climbThirds ? ' · climbing ' + st.climbThirds.map(function(v, t) {
+    return THIRD_NAMES[t] + ' ' + (v == null ? '–' : Math.round(v));
+  }).join(', ') : '';
+  var title = dayLabel(st) + climbTxt + ' · ' + (w ? w[0] : 'no weather code') + ' · high ' + tx(st.hi) + u.temp.u.slice(1) + ', low ' + tx(st.lo) + u.temp.u.slice(1) +
     ' · precipitation ' + ptxt + ' water equivalent (rain ' + fv(cv('precip', st.rain), u.precip.dp) + ', snow ' + fv(cv('precip', st.snowWE), u.precip.dp) +
     '), chance up to ' + (st.prob == null ? '–' : Math.round(st.prob) + '%') + ' · wind up to ' + wtxt +
     ' · new snow ' + (sv == null ? '–' : fv(sv, u.snow.dp) + ' ' + u.snow.u) + ' · freezing level ' + ftxt + ' (daylight mean)';
