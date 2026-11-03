@@ -3,7 +3,8 @@
 #
 # Usage: ./deploy.sh [-n]    (-n = dry run, show what would be sent)
 #
-# Copies only the git-tracked top-level *.html files. The web root also holds
+# Copies only the git-tracked top-level *.js and *.html files (JS first, so a page never
+# loads before the script it depends on). The web root also holds
 # WordPress, so never sync the whole directory or use --delete here.
 set -euo pipefail
 
@@ -22,9 +23,10 @@ if [[ "$BRANCH" != "main" ]]; then
 fi
 
 FILES=()
+while IFS= read -r f; do FILES+=("$f"); done < <(git ls-files -- '*.js' ':!:*/*')
 while IFS= read -r f; do FILES+=("$f"); done < <(git ls-files -- '*.html' ':!:*/*')
 if [[ ${#FILES[@]} -eq 0 ]]; then
-  echo "No HTML files to deploy." >&2
+  echo "No HTML/JS files to deploy." >&2
   exit 1
 fi
 
