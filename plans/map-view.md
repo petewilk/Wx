@@ -9,7 +9,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 | # | Batch | Agents | Description | Status |
 |---|-------|--------|-------------|--------|
 | 1 | Design seams | architect | Decide the map module's state, functions and hooks into the existing render, ordering and ranking code. Write them into this file. | Done |
-| 2 | Map shell | implementer | Add the Map option to View, load Leaflet, set up the full-height map and dark tiles, define when it fits, and show places as plain dots. | Not started |
+| 2 | Map shell | implementer | Add the Map option to View, load Leaflet, set up the full-height map and dark tiles, define when it fits, and show places as plain dots. | Done |
 | 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Not started |
 | 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Not started |
 | 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Not started |
@@ -311,3 +311,9 @@ function spanThirds(p, T) → Array<number|null>(3) | null
 _Each batch adds anything the next ones need to know here: deviations, open issues, gotchas._
 
 - **Batch 1:** D1–D5 in Design seams are settled as recommended and override the spec where they differ: the Map picker never clears `TARGET` (D1), **Open forecast** is hidden for an untagged map-added place (D2), that place has no rank number (D3), pills skip null days while rank doesn't (D4), overlap recomputes on both `zoomend` and `moveend` (D5).
+- **Batch 2:** Map shell is in. Deviations and notes for later batches:
+  - The map sits in a wrapper `#mapBox` (holds `#map` and the `#mapMsg` overlay); `syncViewChrome` shows and hides it. `#mapDays` exists, empty and hidden, for batch 3.
+  - `mapEnter` calls `syncViewChrome` and `mapSize` itself. `mapInit` sets a default view (`MAP_DEFAULT_VIEW`) so markers work before the first fit. Tiles use `maxZoom: 18`.
+  - `mapRequestFit` fits immediately and clears `fitPending`; `mapSync` fits only when the flag is pending (set by `setView`).
+  - `mapEnsureTarget` and the `setDays` hook are not done yet (batch 3). Until then Clear ranking is hidden in Map, so a `TARGET` set in Graphic or Table can only be cleared there.
+  - Not yet checked visually: dot-and-name styling, Leaflet-load-failure message, refit on a filtered subset. Map-tile rendering was blank in the preview pane; markers rendered and there were no console errors.

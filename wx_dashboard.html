@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Wx Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root {
     --bg:#0d1117; --surface:#161b22; --border:#21262d;
@@ -208,6 +210,17 @@
   .leg i.box{height:8px;margin-bottom:1px;opacity:.7}
   .note{padding:10px 20px;font-size:10px;line-height:1.5;color:var(--muted);max-width:90ch}
   .empty{color:var(--muted);font-size:11px;padding:16px}
+  /* Map view: fills the rest of the window height (mapSize sets the pixel height, never below 400) */
+  #mapBox{position:relative;background:var(--surface);border-bottom:1px solid var(--border)}
+  #map{width:100%;height:400px;min-height:400px;background:var(--surface);z-index:0}
+  .leaflet-container{font-family:system-ui,monospace}
+  html:not(.light) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85)}
+  #mapMsg{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:500;max-width:calc(100% - 32px);background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;text-align:center;pointer-events:none}
+  #mapBox.nomap #map{display:none}
+  #mapBox.nomap #mapMsg{position:static;transform:none;max-width:none;border:0;padding:16px;text-align:left;pointer-events:auto}
+  .wxmk{background:none;border:0}
+  .wxmk .mkd{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;margin:-2px 0 0 -2px}
+  .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none}
   footer{padding:10px 20px 20px;font-size:10px;color:var(--muted)}
   footer a{color:var(--accent);text-decoration:none}
   footer a:hover{text-decoration:underline}
@@ -287,6 +300,7 @@
     <div class="seg" id="viewSeg" role="group" aria-label="Overview style">
       <button type="button" data-view="graphic" aria-pressed="true" title="Timeline strip per place">Graphic</button>
       <button type="button" data-view="table" aria-pressed="false" title="Text grid per day">Table</button>
+      <button type="button" data-view="map" aria-pressed="false" title="Places on a map">Map</button>
     </div>
   </div>
   <div class="grp" id="rowhGrp">
@@ -299,7 +313,7 @@
     <label>Activity</label>
     <div class="chips" id="filterChips" role="group" aria-label="Show only places with these activity tags"></div>
   </div>
-  <div class="grp">
+  <div class="grp" id="groupGrp">
     <button type="button" class="tog" id="groupBtn" aria-pressed="false" title="Group rows under each place's first activity tag">Group by tag</button>
   </div>
   <div class="grp">
@@ -330,6 +344,11 @@
     <div class="ghead" id="ghead"></div>
     <div class="cards" id="cards"></div>
   </div>
+</div>
+<div id="mapDays" hidden></div>
+<div id="mapBox" hidden>
+  <div id="map"></div>
+  <div id="mapMsg" role="status" hidden></div>
 </div>
 <div class="tip" id="tip" hidden></div>
 
@@ -442,7 +461,7 @@ var CLIMB_BANDS = {
 };
 var CLIMB_PILLS = { h: 6, gap: 1, maxW: 24, sep: 2, pad: 5 };   // graphic view: pill row above the strip of a Climb place, CSS px (+ gap below); pill max width, spacing, side padding in the day column
 var THIRD_NAMES = ['morning', 'midday', 'afternoon'];
-var VIEWS = ['graphic', 'table'];   // overview styles; the first is the default
+var VIEWS = ['graphic', 'table', 'map'];   // overview styles; the first is the default
 var KMH_PER_MPH = 1.609344;
 var CLIMB_DEBUG = (/[?&]climbdebug=(\d{1,2})(?:&|$)/.exec(location.search) || [])[1];   // dev only: ?climbdebug=N requests N past days and tables the daily index
 var PAST_DAYS = CLIMB_DEBUG != null ? Math.min(92, +CLIMB_DEBUG) : 3;   // extra days requested before today, only to seed the rolling 24 h precipitation window and the climbing wetness bucket
@@ -575,7 +594,18 @@ var cursorT = null;       // hovered instant (ms since epoch), shared by all car
 var viewT = null;         // instant at the left edge of the last-scrolled card
 var searchSeq = 0;
 var pending = 0;
-var VIEW = VIEWS[0];      // overview style: 'graphic' strips or 'table' text cells
+var VIEW = VIEWS[0];      // overview style: 'graphic' strips, 'table' text cells or 'map'
+// Map view state (see plans/map-view.md); every hook is a no-op unless VIEW === 'map' && MAPS.ok
+var MAPS = {
+  ok: typeof L !== 'undefined',   // Leaflet loaded (the CDN can fail)
+  map: null,        // L.Map, created on first entry to Map view (its container must be visible)
+  layer: null,      // L.layerGroup holding every place marker
+  fitPending: true, // fit visible places at the next mapSync
+  exempt: null      // place added from the map, shown even when the Activity filter would hide it (batch 5)
+};
+var MAP_FIT = { padding: [40, 40], maxZoom: 11 };   // fitBounds options: maxZoom stops a lone place zooming to street level
+var MAP_MIN_H = 400, MAP_BOTTOM_PAD = 24;           // CSS px: minimum map height, space kept below it
+var MAP_DEFAULT_VIEW = { center: [39, -98], zoom: 3 };   // only until the first fit
 var ROW_H = ROWH.def;     // graphic row height, CSS px
 var SPPH = MIN_SPPH.short;   // strip pixels per hour (graphic view)
 var SORT = 'dry';         // ranking metric
@@ -708,7 +738,7 @@ function onAdd() {
   resolveQuery(q)
     .then(function(loc) {
       if (seq !== searchSeq) return;
-      if (addPlace(loc)) document.getElementById('locInput').value = '';
+      if (addPlace(loc)) { document.getElementById('locInput').value = ''; mapRequestFit(); }
     })
     .catch(function(e) {
       if (seq !== searchSeq) return;
@@ -733,7 +763,7 @@ function useMyLocation() {
             function()  { return 'My location (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')'; })
       .then(function(label) {
         if (seq !== searchSeq) return;
-        addPlace({ lat: lat, lon: lon, label: label });
+        if (addPlace({ lat: lat, lon: lon, label: label })) mapRequestFit();
       });
   }, function(err) {
     if (seq !== searchSeq) return;
@@ -906,7 +936,7 @@ function addPlace(loc) {
   document.getElementById('cards').appendChild(buildCard(p));
   applyOrder();
   loadPlace(p);
-  return true;
+  return p;
 }
 
 function removePlace(p) {
@@ -915,6 +945,7 @@ function removePlace(p) {
   if (p.el && p.el.root.parentNode) p.el.root.parentNode.removeChild(p.el.root);
   savePlaces();
   setStatus('');
+  mapDrop(p);
   renderAll();   // the Climb column may go away, and the shared precipitation scale may shrink
   updateStamp();
 }
@@ -922,7 +953,8 @@ function removePlace(p) {
 function makePlace(loc) {
   return { lat: loc.lat, lon: loc.lon, label: loc.label, status: 'loading', err: '', ensStatus: 'idle',
            data: null, ens: null, fetchedAt: 0, attemptAt: 0, seq: 0, ensSeq: 0, el: null, layout: null,
-           tags: loc.tags ? loc.tags.slice() : [], open: false, rank: null };
+           tags: loc.tags ? loc.tags.slice() : [], open: false, rank: null,
+           mk: null, mkHtml: '', mkMode: 'dot', mapRank: null };
 }
 
 // Placeholder lines under the rows: no places at all, or none matching the tag filter
@@ -1214,6 +1246,7 @@ function loadPlace(p) {
   syncRefreshBtn();
   renderCardState(p);
   renderRow(p);
+  mapUpdatePlace(p);
   return limited(function() {
     if (seq !== p.seq || p.removed) return Promise.resolve(null);   // superseded while queued
     return fetchJson(forecastUrl(p));
@@ -2720,6 +2753,7 @@ var ICON_PX = 28;
 function renderRow(p, P) {
   var e = p.el;
   if (!e) return;
+  if (VIEW === 'map') return;   // the rows are hidden in Map view
   var host = e.cells;
   e.cellEls = [];
   renderClimbCol(p, P || (VIEW === 'graphic' ? stripPal() : pal()));
@@ -2868,6 +2902,7 @@ function applyOrder(animate) {
     if (body.children[k] !== want[k]) { body.insertBefore(want[k], body.children[k] || null); moved = true; }
   }
   showEmpty(vis.length);
+  mapSync();   // before the early return below, so it runs even when no row moved
   // DOM moves can reset scroll positions; put every open meteogram back on the shared instant
   if (moved) PLACES.forEach(function(p) { if (p.open && p.layout) restoreScroll(p); });
   if (!flip || !moved) return;
@@ -2952,7 +2987,7 @@ function syncViewBar() {
   for (i = 0; i < vs.length; i++) vs[i].setAttribute('aria-pressed', String(vs[i].getAttribute('data-view') === VIEW));
   document.getElementById('sortSel').value = SORT;
   document.getElementById('spanBtn').setAttribute('aria-pressed', String(SPAN_MODE));
-  document.getElementById('clearBtn').hidden = !TARGET;
+  document.getElementById('clearBtn').hidden = !TARGET || VIEW === 'map';
   var info = document.getElementById('rankInfo'), ref = refPlace(), name = '';
   SORTS.forEach(function(x) { if (x[0] === SORT) name = x[1]; });
   if (TARGET) {
@@ -2960,7 +2995,9 @@ function syncViewBar() {
     var span = da && db ? dayLabel(da) + (TARGET.b > TARGET.a ? ' – ' + dayLabel(db) : '') : 'selected days';
     info.innerHTML = 'Ranking <b>' + esc(span) + '</b> by <b>' + esc(name) + '</b>' +
       (TARGET.b > TARGET.a ? ' (span totals for precipitation and snow, maxima for wind and highs)' : '') +
-      '. Drag reorder is off while ranked.';
+      (VIEW === 'map' ? '.' : '. Drag reorder is off while ranked.');
+  } else if (VIEW === 'map') {
+    info.textContent = 'Every place that matches the Activity filter is on the map.';
   } else {
     info.textContent = 'Click a day heading to rank places for that day; shift-click (or Span, then tap) a second heading for a range. Click a row for its meteogram.';
   }
@@ -3153,13 +3190,161 @@ function renderCardState(p) {
   e.body.hidden = !p.data;
 }
 
+// ── Map view (Leaflet) ─────────────────────────────────────────────────────
+function mapActive() { return VIEW === 'map' && MAPS.ok && !!MAPS.map; }
+
+// Shows and hides the pieces that belong to the current overview style
+function syncViewChrome() {
+  var g = document.getElementById('grid'), map = VIEW === 'map';
+  g.hidden = map;
+  g.classList.toggle('gfx', VIEW === 'graphic');
+  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
+  document.getElementById('legend').hidden = map || document.getElementById('legend').hidden;
+  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
+  document.getElementById('groupGrp').hidden = map;
+  document.getElementById('mapBox').hidden = !map;
+  document.getElementById('mapDays').hidden = !map;
+}
+
+// Message over the map (or in its place when Leaflet is missing); null hides it
+function mapMessage(text) {
+  var m = document.getElementById('mapMsg');
+  m.textContent = text || '';
+  m.hidden = !text;
+}
+
+function mapInit() {
+  if (!MAPS.ok || MAPS.map) return;
+  try {
+    MAPS.map = L.map('map', { scrollWheelZoom: true, zoomSnap: 0.25 });
+    MAPS.map.setView(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom);   // markers need a view before the first fit
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(MAPS.map);
+    MAPS.layer = L.layerGroup().addTo(MAPS.map);
+  } catch (e) {
+    console.error('Map could not start', e);
+    MAPS.ok = false;
+    MAPS.map = null;
+    MAPS.layer = null;
+  }
+}
+
+function mapEnter() {
+  syncViewChrome();
+  if (!MAPS.ok) {
+    document.getElementById('mapBox').classList.add('nomap');
+    mapMessage('The map could not load (Leaflet is unavailable, check your connection). Graphic and Table still work.');
+    return;
+  }
+  mapInit();
+  if (!MAPS.ok) {   // mapInit failed
+    document.getElementById('mapBox').classList.add('nomap');
+    mapMessage('The map could not start. Graphic and Table still work.');
+    return;
+  }
+  MAPS.fitPending = true;
+  mapSize();   // container is visible now: size it, then Leaflet can fit
+}
+
+function mapLeave() {
+  if (!MAPS.ok || !MAPS.map) return;
+  MAPS.map.closePopup();
+  MAPS.fitPending = true;
+}
+
+// Map height: the rest of the window below its top edge, never under MAP_MIN_H
+function mapSize() {
+  if (!mapActive()) return;
+  var box = document.getElementById('mapBox'), el = document.getElementById('map');
+  var top = box.getBoundingClientRect().top + window.pageYOffset;
+  var h = Math.max(MAP_MIN_H, Math.floor(window.innerHeight - top - MAP_BOTTOM_PAD));
+  el.style.height = h + 'px';
+  MAPS.map.invalidateSize();
+}
+
+function mapVisible(p) { return placeVisible(p) || p === MAPS.exempt; }
+
+// Marker icon HTML: batch 2 draws a dot and the name for every place
+function mapIconHtml(p, mode, P) {
+  return '<div class="mkd"></div><div class="mkn">' + esc(p.label) + '</div>';
+}
+
+function mapMakeIcon(html) {
+  return L.divIcon({ className: 'wxmk', html: html, iconSize: [0, 0] });
+}
+
+// Rebuilds one marker's icon, only when its HTML changed (avoids flicker)
+function mapUpdatePlace(p) {
+  if (!mapActive() || !p.mk) return;
+  var html = mapIconHtml(p, p.mkMode, pal());
+  if (html === p.mkHtml) return;
+  p.mkHtml = html;
+  p.mk.setIcon(mapMakeIcon(html));
+}
+
+// Brings the markers in line with the visible places
+function mapSync() {
+  if (!mapActive()) return;
+  var vis = 0, P = pal();
+  PLACES.forEach(function(p) {
+    if (!mapVisible(p)) {
+      if (p.mk) { MAPS.layer.removeLayer(p.mk); p.mk = null; p.mkHtml = ''; }
+      return;
+    }
+    vis++;
+    var html = mapIconHtml(p, p.mkMode, P);
+    if (!p.mk) {
+      p.mkHtml = html;
+      p.mk = L.marker([p.lat, p.lon], { icon: mapMakeIcon(html), title: p.label, keyboard: false });
+      p.mk.addTo(MAPS.layer);
+    } else if (html !== p.mkHtml) {
+      p.mkHtml = html;
+      p.mk.setIcon(mapMakeIcon(html));
+    }
+  });
+  mapMessage(!PLACES.length ? 'No places yet. Add a zip code, place name, or lat, lon above.'
+    : !vis ? 'No places have the selected activity tags.' : null);
+  if (MAPS.fitPending) { MAPS.fitPending = false; mapFit(); }
+}
+
+// Fit now if Map is showing; otherwise the next entry fits (setView sets the flag)
+function mapRequestFit() {
+  if (!mapActive()) return;
+  MAPS.fitPending = false;
+  mapFit();
+}
+
+function mapFit() {
+  if (!mapActive()) return;
+  var pts = PLACES.filter(mapVisible).map(function(p) { return [p.lat, p.lon]; });
+  if (!pts.length) return;   // nothing to show: leave the view where it is
+  MAPS.map.invalidateSize();
+  MAPS.map.fitBounds(L.latLngBounds(pts), { padding: MAP_FIT.padding, maxZoom: MAP_FIT.maxZoom, animate: false });
+}
+
+function mapDrop(p) {
+  if (p === MAPS.exempt) MAPS.exempt = null;
+  if (!MAPS.ok || !MAPS.layer || !p.mk) return;
+  MAPS.layer.removeLayer(p.mk);
+  p.mk = null;
+  p.mkHtml = '';
+  if (MAPS.map) MAPS.map.closePopup();
+}
+
 function renderAll() {
+  syncViewChrome();
+  if (VIEW === 'map') {   // the grid is hidden (width 0), so skip its sizing and row rendering
+    renderLegend();
+    syncNotes();
+    syncViewBar();
+    applyOrder();
+    return;
+  }
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');   // open meteograms are as wide as the visible grid
-  g.classList.toggle('gfx', VIEW === 'graphic');
-  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
-  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   computePph();
   computeSpph();
   var P = VIEW === 'graphic' ? stripPal() : pal();
@@ -3243,9 +3428,12 @@ function setRowH(v) {
 
 function setView(v) {
   if (VIEWS.indexOf(v) < 0 || v === VIEW) return;
+  if (v === 'map') MAPS.fitPending = true;
+  else if (VIEW === 'map') mapLeave();
   VIEW = v;
   savePrefs();
   clearCursor();
+  if (VIEW === 'map') mapEnter();
   renderAll();
 }
 
@@ -3296,8 +3484,10 @@ function setUnits(u) {
     var t = b.getAttribute('data-tag'), i = TAGFILTER.indexOf(t);
     if (i >= 0) TAGFILTER.splice(i, 1); else TAGFILTER.push(t);
     TAGFILTER = cleanTags(TAGFILTER);
+    MAPS.exempt = null;   // a place added from the map follows the filter again
     savePrefs();
     syncViewBar();
+    mapRequestFit();
     applyOrder();
   });
   document.getElementById('groupBtn').addEventListener('click', function() {
@@ -3355,6 +3545,7 @@ var lastW = window.innerWidth, resizeTimer = null;
 window.addEventListener('resize', function() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(function() {
+    mapSize();   // the map height follows vertical resizes too
     // phone browsers fire resize as the URL bar hides; only a width change needs a redraw
     if (window.innerWidth === lastW) return;
     lastW = window.innerWidth;
@@ -3395,15 +3586,14 @@ setInterval(function() {
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
-  g.classList.toggle('gfx', VIEW === 'graphic');
-  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
-  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
+  syncViewChrome();
   computePph();
   computeSpph();
   renderHeader();
   renderLegend();
   syncNotes();
   syncClimbCtl();
+  if (VIEW === 'map') mapEnter();
   applyOrder();
   PLACES.forEach(function(p) { loadPlace(p); });
 })();
