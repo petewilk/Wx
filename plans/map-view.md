@@ -8,7 +8,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 
 | # | Batch | Agents | Description | Status |
 |---|-------|--------|-------------|--------|
-| 1 | Design seams | architect | Decide the map module's state, functions and hooks into the existing render, ordering and ranking code. Write them into this file. | Not started |
+| 1 | Design seams | architect | Decide the map module's state, functions and hooks into the existing render, ordering and ranking code. Write them into this file. | Done |
 | 2 | Map shell | implementer | Add the Map option to View, load Leaflet, set up the full-height map and dark tiles, define when it fits, and show places as plain dots. | Not started |
 | 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Not started |
 | 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Not started |
@@ -153,8 +153,161 @@ Clicking or tapping a place opens a popup with:
 
 ## Design seams
 
-_Filled in by batch 1._
+Line numbers refer to `wx_dashboard.html` at commit 37ce9e6. They will drift as batches land, so search by function name.
+
+### Decisions (spec conflicts; all recommendations accepted by the user on 2026-11-09)
+
+| # | Conflict | Where | Recommendation |
+|---|---|---|---|
+| D1 | Clicking a day that is already selected clears `TARGET` (`onHeaderClick` 2911-2912). On Map this would leave no day, and the spec hides Clear ranking there. | `onHeaderClick` 2906 | The Map picker uses its own `mapPickDay`: clicking a selected day narrows the selection to that one day. It never sets `TARGET` to null. |
+| D2 | A place added from the map is shown on Map even when the filter would hide it. **Open forecast** switches to Graphic, where `placeVisible` (2820) hides that row, so it opens and scrolls to a hidden row. | `toggleOpen` 2969, `applyOrder` 2859 | Hide **Open forecast** for that place until it is tagged. The other choice is to clear `TAGFILTER` first. |
+| D3 | Does that place get a rank? The rows never rank it, and the spec says "the same rank the rows show". | `applyOrder` 2849-2853 | It gets no number, so Map numbers match the rows. |
+| D4 | Pills skip null days (spec), but the rank does not. `sortKey` (2796) and `climbSpan` (2761) return null if any day in the span is null. A place can show coloured pills and no rank number. | 2756, 2788 | Accept and document it. Don't change the ranking. |
+| D5 | "Recompute on zoom and move": a pan doesn't change pixel distances between markers, so the `moveend` recompute is redundant. | none | Keep both listeners as the spec says. The cost is small with 30 or fewer places. |
+
+### 1. Map state and lifecycle
+
+```js
+var MAPS = {
+  ok: typeof L !== 'undefined', // Leaflet loaded (CDN can fail)
+  map: null,       // L.Map, created on first entry to Map view (container must be visible)
+  layer: null,     // L.layerGroup holding every place marker
+  fitPending: true,// fit visible places at the next mapSync
+  exempt: null,    // place added from the map, shown even when TAGFILTER would hide it
+  ghost: null,     // non-interactive full marker shown while hovering a collapsed one
+  press: null      // long-press state {id, x, y, timer, latlng}
+};
+```
+
+Fields on each place, initialised in `makePlace` (922-925), following the existing `p.el` pattern:
+- `mk`: an `L.Marker` or null.
+- `mkHtml`: the last icon HTML. `setIcon` runs only when it changes, which avoids flicker and keeps hover and tooltips working.
+- `mkMode`: `'full' | 'badge' | 'dot'`.
+- `mapRank`: a number or null.
+
+Lifecycle:
+- **Create:** `mapInit()` runs on the first `mapEnter()`. It creates the map with `scrollWheelZoom: true` (Japow uses false; the spec differs on purpose), the OSM tile layer like Japow (689-693), `zoomend`/`moveend` → `mapCollapse`, and `contextmenu` plus long-press → add menu.
+- **Never destroyed.** Leaving Map hides `#map`, closes the popup, removes the ghost and sets `fitPending = true`.
+- **Viewport:** not saved or stored in prefs. The Leaflet instance keeps pan and zoom while you stay in Map view, and every entry fits again. That meets "kept only while you stay in Map view".
+- **Exemption:** in memory only. `MAPS.exempt` is cleared by the filter-chip handler and by `toggleTag(p)` when `p === MAPS.exempt`. Leaving Map does **not** clear it (see D2).
+- **Hidden container:** Leaflet can't size or fit inside a hidden container. Order: unhide → `mapSize()` → `invalidateSize()` → fit.
+
+### 2. Call-in points
+
+Every map hook does nothing unless `VIEW === 'map' && MAPS.ok`. One hook in `applyOrder` covers most triggers.
+
+| Caller | Line | Change |
+|---|---|---|
+| `applyOrder` | 2826 | Call `mapSync()` after `showEmpty` (2870) and **before** the early return at 2873. Placed lower, it is skipped when nothing moved. |
+| `renderAll` | 3156 | Start with `syncViewChrome()`. If `VIEW==='map'`: `renderLegend(); syncNotes(); syncViewBar(); applyOrder(); return;`. This skips grid sizing (width is 0 while hidden) and row rendering. |
+| `renderRow` | 2720 | After `if (!e) return;`, add `if (VIEW === 'map') return;`. It currently treats every non-graphic view as Table (2726), and `loadPlace` calls it at 1216/1241. |
+| `setView` | 3244 | Order: `if (v==='map') { mapEnsureTarget(); MAPS.fitPending = true; } else if (VIEW==='map') mapLeave();`, then set VIEW, `savePrefs()`, `clearCursor()`, then `if (VIEW==='map') mapEnter();` before `renderAll()`. `mapEnsureTarget` assigns `TARGET` directly instead of calling `setTarget`, to avoid a second `applyOrder`. `renderAll` restores the header, cells and band highlights on return. |
+| `setTarget` | 2894 | No direct hook. It reaches `applyOrder(true)` at 2903, which runs `mapSync` (ranks, picker, pills). |
+| `setDays` | 3203 | After the `TARGET` adjustment at 3207-3208, call `mapEnsureTarget()`. Switching to fewer days can set `TARGET` to null. |
+| `addPlace` | 894 | Return `p` instead of `true`. It is still truthy, and the caller at 711 still works. Its `applyOrder` (907) shows the marker. |
+| `onAdd` / `useMyLocation` | 711 / 736 | `if (addPlace(loc)) mapRequestFit();`. The flag goes here, not in `addPlace`, because a map add must not refit. |
+| `removePlace` | 912 | `mapDrop(p)` before `renderAll()` (918). The place has already left `PLACES`, so `mapSync` can't sweep its marker. |
+| `toggleTag` | 2983 | `if (p === MAPS.exempt) MAPS.exempt = null;` before rendering. Climb → `renderAll` and other tags → `applyOrder` both reach `mapSync`, so the dot becomes an arch right away. |
+| Filter chips | 3293-3302 | `MAPS.exempt = null; mapRequestFit();` before `applyOrder()` (3301). |
+| Group button | 3303 | No hook. Map ignores `GROUP`, and the button is hidden in Map. |
+| Rename `finish` | 3111-3115 | No hook. Rename can't be reached in Map view because the rows are hidden, and `mapSync` rebuilds labels on entry. |
+| `loadPlace` start | 1215-1216 | `mapUpdatePlace(p)`, so a Retry shows the loading pills right away. |
+| `loadPlace` done or failed | 1235-1249 | No hook. `applyOrder(true)` (1244) runs on both success and failure. |
+| Theme | 3367, 3374 | No hook. `renderAll` → `mapSync` rebuilds icons from `pal().climb`. The tile invert is CSS only. |
+| `setUnits` | 3252 | No hook. `renderAll` → `mapSync` refreshes an open popup. |
+| `syncViewBar` | 2955 | `clearBtn.hidden = !TARGET \|\| VIEW==='map'`. The Map `rankInfo` text (2958-2966) must drop the "day heading" and "Drag reorder" wording. |
+| Resize | 3355-3363 | Call `mapSize()` on every resize, outside the width-only check at 3359. Otherwise the map height ignores vertical resizes. |
+| Init | 3395-3407 | Replace the copied chrome lines 3398-3400 with `syncViewChrome()`, and add `if (VIEW==='map') { mapEnsureTarget(); mapEnter(); }` before `applyOrder()` (3407). This handles a page that loads with Map saved in prefs. |
+| HTML | 287-304 | Add a third `#viewSeg` button, give the Group `.grp` an id (`groupGrp`; it has none at 302), and add `#mapDays` + `#map` after `#grid` (328-333). |
+
+### 3. Ranking without GROUP in Map view
+
+- **Extract a ranking function.** Lines 2849-2853 become a pure `rankList(list)`. `applyOrder` calls it once per bucket and copies `it.rank` into `p.rank`, so the rows behave exactly as before.
+- **Map rank.** `mapRanks()` calls `rankList(PLACES.filter(placeVisible))` once over all visible places, ignoring buckets, and writes `p.mapRank`. Every other place gets `mapRank = null`, and so does `MAPS.exempt` (D3). Ties share a number, as before.
+- **What reads which.** Markers, popup and collapse order read `mapRank`. `p.rank` stays as it is for the rows. It is still computed while in Map (the hidden rows keep their grouped order), so returning to Graphic or Table is unchanged.
+- **QA check:** with `GROUP` off and no exempt place, `p.mapRank === p.rank` for every place.
+
+### 4. Span-averaged thirds
+
+```js
+// Mean of daily[k].climbThirds[t] for k in [T.a, T.b], skipping null days and days beyond this place's data.
+// Returns [morning, midday, afternoon]: each a number (unrounded) or null if every day is null.
+// Returns null when p has no data or T is null. Tag-agnostic; callers check CLIMB_TAG.
+function spanThirds(p, T) → Array<number|null>(3) | null
+```
+- Reads `p.data.daily[k].climbThirds` (built in `dayStats`, 1463-1467, 1479).
+- Round only for display. Colour with `climbBg(v, P)` (2236).
+- It is a sibling of `climbSpan` (2756), which drops the whole span when any day is null. That difference is D4.
+
+### 5. Overlap collapse
+
+`mapCollapse()` is in the batch 4 row of the function table.
+
+**Triggers:** `zoomend` and `moveend`, and the end of every `mapSync` (for added places when the view hasn't moved).
+
+**Inputs:**
+- Places with `p.mk`, sorted by `mapRank` ascending. Unranked places come last, and ties keep their `PLACES` order.
+- Each place's full-footprint rectangle from `mapFootprint(p)`, placed at `map.latLngToLayerPoint(p.mk.getLatLng())`.
+- Full climb marker: about 56 × 72 px including the name. Other places: dot or badge plus the estimated name width.
+
+**Greedy pass:**
+- A place stays `'full'` if its rectangle misses every full rectangle already placed.
+- Otherwise it becomes `'badge'` if it has a `mapRank`, or `'dot'` if not.
+- Only full rectangles take up space.
+
+**Output:**
+- `p.mkMode`, applied through `setIcon` only when the mode or HTML changed.
+- `zIndexOffset`: full markers stack above collapsed ones, with #1 on top.
+
+**Hover:** mouseover on a collapsed marker adds `MAPS.ghost`, a non-interactive full marker with a high `zIndexOffset`. Mouseout removes it. Swapping the hovered marker's own icon would break its mouse events.
+
+**Pill tooltips:** an SVG `<title>` per pill, e.g. "Morning: 72". Touch users get the scores in the popup.
+
+### 6. Function list
+
+| Function | Returns / purpose | Batch |
+|---|---|---|
+| `syncViewChrome()` | Shows or hides `#grid`, `#legend`, `#rowhGrp`, `#groupGrp`, `#map`, `#mapDays` for `VIEW` | 2 |
+| `mapInit()` | Creates `MAPS.map` and `MAPS.layer`, tiles and event listeners | 2 |
+| `mapEnter()` / `mapLeave()` | Show or hide; set `fitPending`, close popup, remove ghost | 2 |
+| `mapSize()` | Sets `#map` height to `max(400, innerHeight − top − margin)`, then `invalidateSize` | 2 |
+| `mapVisible(p) → bool` | `placeVisible(p) \|\| p === MAPS.exempt` | 2 |
+| `mapSync()` | Order: `mapRanks` → add or remove markers → icons → `renderMapDays` → fit if pending → `mapCollapse` → refresh open popup | 2 (adds steps in 3-5) |
+| `mapRequestFit()` | Sets `fitPending`; calls `mapFit` now if Map is showing | 2 |
+| `mapFit()` | Fits visible places with `fitBounds(pts, {padding, maxZoom: 11})`. No points: leave the view. | 2 |
+| `mapDrop(p)` | Removes the marker, closes its popup, clears `exempt` if it was this place | 2 |
+| `mapUpdatePlace(p)` | Rebuilds one marker's icon | 2 |
+| `mapIconHtml(p, mode, P) → string` | Dot and name (2); arch, badge and state variants (4) | 2, 4 |
+| `rankList(list) → [{p, k, rank}]` | Pulled out of `applyOrder` | 3 |
+| `mapRanks()` | Writes `p.mapRank` | 3 |
+| `spanThirds(p, T)` | See §4 | 3 |
+| `mapEnsureTarget()` | `if (VIEW==='map' && !TARGET) TARGET = {a:0, b:0, anchor:0}` | 3 |
+| `renderMapDays()` | Picker buttons labelled from `refPlace()`, like `renderHeader` 2622-2629 | 3 |
+| `mapPickDay(k, shift)` | Same as `onHeaderClick` but never sets `TARGET` to null (D1); respects `SPAN_MODE` | 3 |
+| `placeFailed(p) → bool` | The expression at 3148, shared with `renderCardState` | 4 |
+| `mapMarkerState(p) → 'loading'\|'error'\|'ok'` | loading: `status==='loading' && !data`; error: `status==='error'` | 4 |
+| `archSvg(thirds, P, state, rank) → string` | About 200° arch, morning on the left; `climbBg` colours, `P.climb.none` for missing | 4 |
+| `mapFootprint(p, mode) → {w, h, ax, ay}` | Size and anchor; the anchor is the arch centre | 4 |
+| `mapCollapse()` | See §5 | 4 |
+| `mapHoverOn(p)` / `mapHoverOff()` | Adds or removes the ghost | 4 |
+| `spanStats(p, T) → {hi, lo, total, prob, ws}` | Max hi, min lo, summed total, max prob and ws. A field is null if any day is null, as in `sortKey`. | 5 |
+| `mapPopupEl(p) → HTMLElement` | Contents; delegated clicks on `data-act` (tag, open, retry) | 5 |
+| `mapOpenForecast(p)` | `setView('graphic')`, `toggleOpen(p)` if closed, `scrollIntoView` | 5 |
+| `mapAddMenu(latlng)` / `mapAddHere(latlng)` | `reverseLabel`, falling back to a coordinate label like 732-733, then `addPlace`, then `MAPS.exempt = p`, `mapSync()`, open its popup. No fit. | 5 |
+| `mapPressStart(ev)` / `mapPressCancel()` | Touch long-press after 550 ms. Cancel on a move over 10 px, a second pointer, or pointerup. | 5 |
+
+### 7. Risks and gotchas
+- **Leaflet CDN failure:** `mapSync` runs from `applyOrder`, so a missing `L` would break every view. Check `MAPS.ok` in every hook and show a message in `#map`.
+- **Hidden grid in Map:** `renderAll` sizing (3158-3164) reads width 0. The Map early return avoids this. `loadPlace` still runs `PLACES.forEach(renderCard)` (1242) for open meteograms at minimum width. That is harmless because `setView` → `renderAll` redraws them, but it is wasted work.
+- **Empty states:** `showEmpty` (929) writes into the hidden `#cards`, so Map needs its own "no places" and "none match the filter" overlay (batch 2, checked in 6).
+- **iOS Safari:** it fires no `contextmenu` on long-press, and Leaflet 1.9 dropped its Tap handler. A custom long-press is required; ignore native `contextmenu` for touch so it doesn't fire twice.
+- **Single place:** `fitBounds` on one point zooms to tile max zoom, so `maxZoom` is needed.
+- **Day index:** `TARGET` indices are each place's own local day k, as in the rows (`sortKey` 2790). Picker labels follow `refPlace` like the headings.
+- **Popup during removal:** the batch 6 case "removing a place while its popup is open" can't really be reached, because rows are hidden in Map and leaving Map closes the popup. `mapDrop` covers it anyway.
+- **Duplicate check:** `validPlace` rounds map adds to 4 dp, and the duplicate check (898) is exact lat/lon equality, so two clicks a few metres apart make two places.
 
 ## Batch notes
 
 _Each batch adds anything the next ones need to know here: deviations, open issues, gotchas._
+
+- **Batch 1:** D1–D5 in Design seams are settled as recommended and override the spec where they differ: the Map picker never clears `TARGET` (D1), **Open forecast** is hidden for an untagged map-added place (D2), that place has no rank number (D3), pills skip null days while rank doesn't (D4), overlap recomputes on both `zoomend` and `moveend` (D5).
