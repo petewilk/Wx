@@ -220,6 +220,14 @@
   #mapBox.nomap #mapMsg{position:static;transform:none;max-width:none;border:0;padding:16px;text-align:left;pointer-events:auto}
   .wxmk{background:none;border:0}
   .wxmk .mkd{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;margin:-2px 0 0 -2px}
+  #mapDays{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;background:var(--surface);border-bottom:1px solid var(--border);max-height:112px;overflow-y:auto}
+  #mapDays[hidden]{display:none}
+  .mdb{border:1px solid var(--border);border-radius:6px;padding:3px 8px;display:flex;flex-direction:column;align-items:center;gap:0;font-size:10px;line-height:1.25;color:var(--muted);background:var(--surface);cursor:pointer;min-width:44px}
+  .mdb b{font-size:12px;color:var(--text)}
+  .mdb:hover{background:rgba(var(--accent-rgb),.1)}
+  .mdb[aria-pressed=true]{background:rgba(var(--accent-rgb),.22);box-shadow:inset 0 -2px 0 var(--accent)}
+  .mdb:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .wxmk .mkb{position:absolute;left:-9px;top:-9px;min-width:14px;height:14px;padding:0 2px;border-radius:9px;background:var(--accent);color:#fff;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;font:700 10px/14px system-ui,monospace;text-align:center;margin:-2px 0 0 -2px}
   .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none}
   footer{padding:10px 20px 20px;font-size:10px;color:var(--muted)}
   footer a{color:var(--accent);text-decoration:none}
@@ -2855,6 +2863,17 @@ function placeVisible(p) {
   return !TAGFILTER.length || p.tags.some(function(t) { return TAGFILTER.indexOf(t) >= 0; });
 }
 
+// Sorts a list by the ranked day's key and numbers it; equal keys share a rank (1, 2, 2, 4)
+// Without a TARGET the order is unchanged and every rank is null. Returns [{p, k, rank}] in display order
+function rankList(list) {
+  var items = list.map(function(p, i) { return { p: p, i: i, k: TARGET ? sortKey(p) : null, rank: null }; });
+  if (TARGET) items.sort(function(x, y) { return cmpKey(x.k, y.k) || x.i - y.i; });
+  items.forEach(function(it, i) {
+    it.rank = !TARGET || !it.k ? null : (i && cmpKey(items[i - 1].k, it.k) === 0 ? items[i - 1].rank : i + 1);
+  });
+  return items;
+}
+
 // Order rows: filter by tag, optionally group, then rank within each group when a day is targeted
 // In the graphic view `animate` slides rows to their new positions (FLIP: measure, move in the DOM, invert with a transform, release it)
 function applyOrder(animate) {
@@ -2880,11 +2899,8 @@ function applyOrder(animate) {
       groupEls.push(g);
       want.push(g);
     }
-    var items = bk.list.map(function(p, i) { return { p: p, i: i, k: TARGET ? sortKey(p) : null }; });
-    if (TARGET) items.sort(function(x, y) { return cmpKey(x.k, y.k) || x.i - y.i; });
-    items.forEach(function(it, i) {
-      // equal keys share a rank (1, 2, 2, 4)
-      it.p.rank = !TARGET || !it.k ? null : (i && cmpKey(items[i - 1].k, it.k) === 0 ? items[i - 1].p.rank : i + 1);
+    rankList(bk.list).forEach(function(it) {
+      it.p.rank = it.rank;
       want.push(it.p.el.root);
     });
   });
@@ -2995,7 +3011,7 @@ function syncViewBar() {
     var span = da && db ? dayLabel(da) + (TARGET.b > TARGET.a ? ' – ' + dayLabel(db) : '') : 'selected days';
     info.innerHTML = 'Ranking <b>' + esc(span) + '</b> by <b>' + esc(name) + '</b>' +
       (TARGET.b > TARGET.a ? ' (span totals for precipitation and snow, maxima for wind and highs)' : '') +
-      (VIEW === 'map' ? '.' : '. Drag reorder is off while ranked.');
+      (VIEW === 'map' ? '. Pick a day above; shift-click (or Span, then tap) a second day for a range.' : '. Drag reorder is off while ranked.');
   } else if (VIEW === 'map') {
     info.textContent = 'Every place that matches the Activity filter is on the map.';
   } else {
@@ -3268,7 +3284,8 @@ function mapVisible(p) { return placeVisible(p) || p === MAPS.exempt; }
 
 // Marker icon HTML: batch 2 draws a dot and the name for every place
 function mapIconHtml(p, mode, P) {
-  return '<div class="mkd"></div><div class="mkn">' + esc(p.label) + '</div>';
+  var mark = p.mapRank != null ? '<div class="mkb">' + p.mapRank + '</div>' : '<div class="mkd"></div>';   // temporary rank badge (batch 4 replaces)
+  return mark + '<div class="mkn">' + esc(p.label) + '</div>';
 }
 
 function mapMakeIcon(html) {
@@ -3287,6 +3304,8 @@ function mapUpdatePlace(p) {
 // Brings the markers in line with the visible places
 function mapSync() {
   if (!mapActive()) return;
+  mapRanks();
+  renderMapDays();
   var vis = 0, P = pal();
   PLACES.forEach(function(p) {
     if (!mapVisible(p)) {
@@ -3323,6 +3342,70 @@ function mapFit() {
   MAPS.map.invalidateSize();
   MAPS.map.fitBounds(L.latLngBounds(pts), { padding: MAP_FIT.padding, maxZoom: MAP_FIT.maxZoom, animate: false });
 }
+
+// Ranks every visible place as ONE list (ignoring GROUP) into p.mapRank; everything else, and the
+// place added from the map, gets null so the numbers match the rows
+function mapRanks() {
+  PLACES.forEach(function(p) { p.mapRank = null; });
+  rankList(PLACES.filter(function(p) { return placeVisible(p) && p !== MAPS.exempt; })).forEach(function(it) {
+    it.p.mapRank = it.rank;
+  });
+}
+
+// Mean of daily[k].climbThirds[t] over T.a..T.b, skipping null days and days beyond this place's data
+// Returns [morning, midday, afternoon], each unrounded or null when every day is null; null with no data or no T
+function spanThirds(p, T) {
+  if (!p || !p.data || !p.data.daily || !T) return null;
+  var d = p.data.daily, out = [null, null, null], t, k;
+  for (t = 0; t < 3; t++) {
+    var sum = 0, n = 0;
+    for (k = T.a; k <= T.b && k < d.length; k++) {
+      var th = d[k] && d[k].climbThirds, v = th ? th[t] : null;
+      if (v != null && isFinite(v)) { sum += v; n++; }
+    }
+    out[t] = n ? sum / n : null;
+  }
+  return out;
+}
+
+// Map view always has a day: opens on today (index 0) when nothing is ranked
+function mapEnsureTarget() {
+  if (VIEW === 'map' && !TARGET) TARGET = { a: 0, b: 0, anchor: 0 };
+}
+
+// Day picker strip above the map; same labels as the day headings
+function renderMapDays() {
+  var box = document.getElementById('mapDays'), ref = refPlace(), html = '';
+  for (var k = 0; k < DAYS; k++) {
+    var d = ref && ref.data.daily[k];
+    var on = TARGET && k >= TARGET.a && k <= TARGET.b;
+    html += '<button type="button" class="mdb" data-day="' + k + '" aria-pressed="' + !!on + '"' +
+            ' title="Rank places for this day (shift-click another day for a span)">' +
+            (d ? '<b>' + WD[d.wd] + '</b><span>' + MON[d.mo - 1] + ' ' + d.d + '</span>' : '<b>Day ' + (k + 1) + '</b><span>&nbsp;</span>') +
+            '</button>';
+  }
+  if (box.wxHtml === html) return;   // unchanged: keep focus
+  box.wxHtml = html;
+  box.innerHTML = html;
+}
+
+// Like onHeaderClick, but never clears TARGET: clicking the selected day narrows to that one day
+function mapPickDay(k, shift) {
+  var T = TARGET;
+  if (T && (shift || SPAN_MODE)) {
+    SPAN_MODE = false;
+    setTarget({ a: Math.min(T.anchor, k), b: Math.max(T.anchor, k), anchor: T.anchor });
+  } else {
+    SPAN_MODE = false;
+    if (T && T.a === k && T.b === k) { syncViewBar(); return; }   // already the one selected day
+    setTarget({ a: k, b: k, anchor: k });
+  }
+}
+
+document.getElementById('mapDays').addEventListener('click', function(e) {
+  var b = e.target.closest ? e.target.closest('button[data-day]') : null;
+  if (b) mapPickDay(+b.getAttribute('data-day'), e.shiftKey);
+});
 
 function mapDrop(p) {
   if (p === MAPS.exempt) MAPS.exempt = null;
@@ -3391,6 +3474,7 @@ function setDays(n) {
   viewT = null;
   if (TARGET && TARGET.a >= DAYS) TARGET = null;
   else if (TARGET && TARGET.b >= DAYS) TARGET = { a: TARGET.a, b: DAYS - 1, anchor: Math.min(TARGET.anchor, DAYS - 1) };
+  mapEnsureTarget();
   syncSegs();
   renderAll();
   if (DAYS >= ENS_MIN_DAYS) {
@@ -3431,6 +3515,7 @@ function setView(v) {
   if (v === 'map') MAPS.fitPending = true;
   else if (VIEW === 'map') mapLeave();
   VIEW = v;
+  mapEnsureTarget();   // after VIEW is set (it checks VIEW), still before the first render
   savePrefs();
   clearCursor();
   if (VIEW === 'map') mapEnter();
@@ -3586,6 +3671,7 @@ setInterval(function() {
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
+  mapEnsureTarget();
   syncViewChrome();
   computePph();
   computeSpph();

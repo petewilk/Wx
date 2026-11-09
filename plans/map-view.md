@@ -10,7 +10,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 |---|-------|--------|-------------|--------|
 | 1 | Design seams | architect | Decide the map module's state, functions and hooks into the existing render, ordering and ranking code. Write them into this file. | Done |
 | 2 | Map shell | implementer | Add the Map option to View, load Leaflet, set up the full-height map and dark tiles, define when it fits, and show places as plain dots. | Done |
-| 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Not started |
+| 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Done |
 | 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Not started |
 | 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Not started |
 | 6 | Review and QA | ux-reviewer, qa-validator, implementer | Review usability, check edge cases on phone and in dark mode, and fix what they find. | Not started |
@@ -317,3 +317,9 @@ _Each batch adds anything the next ones need to know here: deviations, open issu
   - `mapRequestFit` fits immediately and clears `fitPending`; `mapSync` fits only when the flag is pending (set by `setView`).
   - `mapEnsureTarget` and the `setDays` hook are not done yet (batch 3). Until then Clear ranking is hidden in Map, so a `TARGET` set in Graphic or Table can only be cleared there.
   - Not yet checked visually: dot-and-name styling, Leaflet-load-failure message, refit on a filtered subset. Map-tile rendering was blank in the preview pane; markers rendered and there were no console errors.
+- **Batch 3:** Day picker, map-wide ranking and `spanThirds` are in; qa-validator hand-checked them (span means incl. null/polar-night/beyond-data days, ties, GROUP on/off, exempt place, `mapPickDay`) with no defects. Notes:
+  - `mapEnsureTarget` runs in `setView` after `VIEW = v` (it checks `VIEW==='map'`), not before as Design seams says.
+  - Opening Map sets TARGET to day 0 for real and it stays when returning to Graphic or Table, per spec.
+  - `#mapDays` buttons are `.mdb` (rebuilt on every `mapSync`, so don't hold references). Ranked dots show a `.mkb` number badge until batch 4. Climb places are still dots; `spanThirds` isn't used by any marker yet.
+  - Checked in the browser with one place only (single rank, picker, shift-click, no console errors). Not checked visually: dark mode, 375 px, multi-place ranking with GROUP on.
+  - `syncViewChrome` has an odd `legend.hidden = map || legend.hidden` (batch 2 code), left alone.
