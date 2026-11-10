@@ -10,7 +10,7 @@ Batch 2 settled the design on 2026-11-10. The live data source is parked until t
 |---|-------|--------|-------------|--------|
 | 1 | Prototype | implementer, qa-validator | Single-file page that paints a hardcoded archived rose (Salt Lake, 2025-02-11) on terrain computed in the browser. | Done (`8db65c6`) |
 | 2 | Grill on open topics | web-fetch (facts), architect (data layout) | Settled every open topic except the live data source; rewrote batches 3 onward. | Done |
-| 3 | UAC link and remembered settings | implementer, ux-reviewer | "Full forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Done |
+| 3 | UAC link and remembered settings | implementer, ux-reviewer | "Archived forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Done |
 | 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Not started |
 | 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Not started |
 | 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Not started |
@@ -40,7 +40,7 @@ Every batch's kickoff is `Run batch N of plans/avy-rose-map.md.` Follow **How to
 
 ### Batch 3: UAC link and remembered settings (implementer, ux-reviewer)
 - **Kickoff:** `Run batch 3 of plans/avy-rose-map.md.`
-- Add "Full forecast on UAC ↗" on its own line under the forecast date in the rose panel, `target="_blank" rel="noopener"`. Build the URL from zone slug and date with the archive pattern (see **UAC link**), not from `FORECAST.source`.
+- Add "Archived forecast on UAC ↗" (was "Full forecast"; changed 2026-11-10) on its own line under the forecast date in the rose panel, `target="_blank" rel="noopener"`. Build the URL from zone slug and date with the archive pattern (see **UAC link**), not from `FORECAST.source`.
 - First-visit defaults: All terrain mode, OSM + hillshade, 50% opacity. Save mode, basemap and opacity to localStorage on change and restore them on load. Wrap every localStorage read and write in try/catch; ignore unknown stored values.
 - Check in the browser preview: link URL for 2025-02-11, settings survive a reload, a private window falls back to defaults.
 
@@ -132,10 +132,10 @@ These decisions came out of the design interview on 2026-11-09. Don't change the
 These came out of the batch 2 grilling. Don't change them without asking the user. Where they differ from the 2026-11-09 spec above, these win.
 
 ### Settings and defaults
-- **Danger mode, basemap and opacity are remembered** per browser in localStorage. First visit: All terrain, OSM + hillshade, 50%. The date is never remembered.
+- **Danger mode, basemap and opacity are remembered** per browser in localStorage. First visit: All terrain, OSM + hillshade, 50%. A saved 0% opacity restores as 50%, so the map never reopens with no visible overlay (user, 2026-11-10). The date is never remembered.
 
 ### UAC link
-- **"Full forecast on UAC ↗"** on its own line under the forecast date in the rose panel, opening in a new tab.
+- **"Archived forecast on UAC ↗"** on its own line under the forecast date in the rose panel, opening in a new tab. The user changed it from "Full forecast" on 2026-11-10 so it doesn't read as today's forecast. Revisit the label once live data shows today's forecast.
 - **Always the archive URL** `https://utahavalanchecenter.org/forecast/{slug}/{M}/{D}/{YYYY}` (no leading zeros), built from the zone slug and the selected date. Use `/forecast/{slug}` only if the archive URL turns out not to work for the current day.
 - It doubles as UAC's attribution, and follows the date switcher.
 
@@ -235,5 +235,5 @@ Only what the user put off on 2026-11-10.
 - **Batch 3:**
   - The rose link's href is set in `buildRose()` from `uacForecastUrl(FORECAST.slug, FORECAST.date)`. The attribution link uses the same helper. Batch 5 re-points both when the day changes. `FORECAST.url` is no longer used, and batch 4 can drop it.
   - Settings are stored under `avyMap.mode`, `avyMap.basemap` (`osmHill` | `topo` | `cyclo`) and `avyMap.opacity`. Invalid values fall back to the defaults.
-  - Checked in the browser: link URL for 2025-02-11, settings survive a reload, invalid stored values fall back, a sandboxed frame with storage blocked renders with defaults, and the link fits the 150px phone panel (136 of 136px, `nowrap`). Any longer label needs a phone-width rule.
-  - Two ux-reviewer points were left as agreed in the spec, pending the user: a remembered 0% opacity shows no overlay on return, and the link label says "Full forecast" even though it points at an archived day.
+  - Checked in the browser: link URL for 2025-02-11, settings survive a reload, invalid stored values fall back, a sandboxed frame with storage blocked renders with defaults, and the link fits the 150px phone panel.
+  - After the ux-reviewer's review, the user had the link relabelled "Archived forecast on UAC ↗" (it wraps at phone width) and a saved 0% opacity restored as 50%.
