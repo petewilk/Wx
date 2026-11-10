@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "center": "uac",
+  "zone": "salt-lake",
+  "zone_name": "Salt Lake",
+  "date": "2025-02-13",
+  "sample": true,
+  "source": "hand-entered from archived rose PNG",
+  "source_url": "https://utahavalanchecenter.org/forecast/salt-lake/2/13/2025",
+  "issued_at": null,
+  "fetched_at": null,
+  "overall_danger_rose": [6,6,6,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
+  "problems": []
+}

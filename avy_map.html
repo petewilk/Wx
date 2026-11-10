@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avalanche Rose Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#58a6ff;--muted:#8b949e;--text:#e6edf3;--warn:#d29922;--btn-on-text:#000;--cs:dark;--inv:1;color-scheme:var(--cs)}
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f6f8fa;--surface:#ffffff;--border:#d0d7de;--accent:#0969da;--muted:#636c76;--text:#1f2328;--warn:#9a6700;--btn-on-text:#fff;--cs:light;--inv:0}
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+  header{padding:8px 12px;border-bottom:1px solid var(--border);flex:0 0 auto}
+  header h1{font-size:18px;font-weight:600;letter-spacing:-.3px}
+  .disc{color:var(--warn);font-size:11px;margin-top:2px}
+  .about{margin-top:2px;font-size:11px;color:var(--muted)}
+  .about summary{cursor:pointer;color:var(--text)}
+  .about p{margin-top:3px;max-height:30vh;overflow-y:auto;max-width:60em}
+  .about a{color:var(--accent)}
+  #map{flex:1 1 auto;min-height:0;background:var(--bg)}
+  .leaflet-control-layers,.leaflet-bar a,.leaflet-control-attribution{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}
+  .leaflet-control-attribution a{color:var(--accent)!important}
+  .leaflet-control-attribution{font-size:10px}
+  .leaflet-control-layers-toggle{filter:invert(var(--inv))}
+  .leaflet-bar a:hover,.leaflet-bar a:focus{background:var(--border)!important}
+  .modebar{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+  .modebar button{background:var(--surface);color:var(--text);border:0;padding:6px 10px;font:11px system-ui,sans-serif;cursor:pointer}
+  .modebar button+button{border-left:1px solid var(--border)}
+  .opacitybar{display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font:11px system-ui,sans-serif}
+  .opacitybar input{width:110px;accent-color:var(--accent);margin:0}
+  .opacitybar output{min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums}
+  .modebar button[aria-pressed=true]{background:var(--accent);color:var(--btn-on-text);font-weight:700}
+  #rose{position:absolute;left:10px;bottom:28px;z-index:1000;width:210px;padding:8px;background:var(--surface);color:var(--text);
+    border:1px solid var(--border);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:11px;max-height:calc(100dvh - 120px);overflow-y:auto}
+  #rose .ttl{font-weight:600}
+  #rose .dt{color:var(--muted);margin-bottom:2px}
+  #rose .dt:empty{margin:0}
+  #rose .dsw{display:flex;align-items:center;gap:3px;margin:3px 0 4px}
+  #rose .dsw button{flex:0 0 28px;height:28px;padding:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:16px/1 system-ui,sans-serif;cursor:pointer}
+  #rose .dsw button:disabled{opacity:.4;cursor:not-allowed}
+  #rose .dsw input{flex:1 1 auto;min-width:0;height:28px;padding:0 3px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:11px system-ui,sans-serif;color-scheme:var(--cs);max-width:100%;-webkit-text-fill-color:var(--text)}
+  #rose .dsw button:focus-visible,#rose .dsw input:focus-visible{outline:2px solid var(--text);outline-offset:1px}
+  #rose .uac{display:block;color:var(--accent);font-size:11px;padding:3px 0;margin-bottom:2px;white-space:nowrap;text-decoration:underline}
+  #rose .uac[hidden]{display:none}
+  #rose .uac:focus-visible,.modebar button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+  #rose svg{display:block;width:100%;height:auto}
+  #rose .cell{stroke:var(--text);stroke-opacity:.6;stroke-width:1;vector-effect:non-scaling-stroke}
+  #rose .cell.hl{stroke-opacity:1;stroke-width:2.5}
+  #rose text{fill:var(--text);font-size:15px;font-family:system-ui,sans-serif}
+  #readout{min-height:4em;line-height:1.25;margin-top:2px;font-variant-numeric:tabular-nums;font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:2px 8px;margin-top:4px;color:var(--muted)}
+  .legend i{display:inline-block;width:10px;height:10px;border:1px solid var(--muted);vertical-align:-1px;margin-right:3px}
+  #notice{flex:0 0 auto;background:var(--surface);color:var(--warn);border-bottom:1px solid var(--warn);padding:4px 12px;font-size:11px;white-space:pre-line}
+  #notice[hidden]{display:none}
+  @media (max-width:520px){
+    #rose{width:188px;padding:6px;bottom:24px}
+    #rose text{font-size:17px}
+    .legend{font-size:10px;gap:1px 6px}
+    .leaflet-control-attribution{max-width:calc(100vw - 210px)}
+    .modebar button{padding:9px 12px}
+    #rose .uac{padding:6px 0}
+    #rose .uac{white-space:normal}
+    #rose .dsw{gap:2px}
+    #rose .dsw button{flex-basis:30px}
+    #rose .dsw button,#rose .dsw input{height:36px}
+    #rose .dsw input::-webkit-calendar-picker-indicator{padding:0;margin:0;width:14px}
+    #rose .dsw input{padding:0 1px;font-size:10px}
+  }
+  @media (max-width:520px) and (pointer:coarse){
+    #rose .dsw input{font-size:16px;padding:0 2px}
+    #rose .dsw input::-webkit-calendar-picker-indicator{display:none}
+  }
+  @media (max-height:520px){#rose svg{max-height:30dvh;width:auto;margin:0 auto}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Avalanche Rose Map</h1>
+  <div class="disc">Prototype using sample archived forecasts (Salt Lake). Not for travel decisions.</div>
+  <details class="about">
+    <summary>About this map</summary>
+    <p>Colors come from the Utah Avalanche Center (UAC) overall danger rose for the day shown. Each spot is colored by its elevation band and the direction its slope faces. Slope-weighted fades the color in between 25&deg; and 35&deg; slopes; All terrain colors everything except nearly flat ground. Hatched stripes mean &ldquo;pockets of&rdquo; the next danger level up. The data are sample archived forecasts, not for travel decisions. See the <a href="https://utahavalanchecenter.org/forecast/salt-lake" target="_blank" rel="noopener">current UAC forecast &#8599;</a>.</p>
+  </details>
+</header>
+<div id="notice" hidden></div>
+<div id="map"></div>
+<div id="rose">
+  <div class="ttl">Salt Lake &middot; overall danger</div>
+  <div class="dsw">
+    <button type="button" id="datePrev" aria-label="Previous forecast day" disabled>&#8249;</button>
+    <input type="date" id="dateInput" aria-label="Forecast date">
+    <button type="button" id="dateNext" aria-label="Next forecast day" disabled>&#8250;</button>
+  </div>
+  <div class="dt" id="roseDate" role="status">Loading forecast&hellip;</div>
+  <a class="uac" id="roseLink" target="_blank" rel="noopener" aria-label="Archived forecast on Utah Avalanche Center (opens in new tab)">Archived forecast on UAC &#8599;</a>
+  <svg id="roseSvg" viewBox="-110 -110 220 220" role="img" aria-label="Avalanche danger rose"></svg>
+  <div id="readout">Hover the map</div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<script>
+'use strict';
+
+/* ================= Forecast data (static JSON files, loaded at runtime) =================
+ * data/avy/{center}/{slug}/index.json        {schema, center, zone, updated_at, dates: [ascending YYYY-MM-DD]}
+ * data/avy/{center}/{slug}/{YYYY-MM-DD}.json  one day: {date, sample, overall_danger_rose: [24 ints], ...}
+ * The newest day is the last entry of index.json. ?date=YYYY-MM-DD picks another day; the date
+ * switcher (prev/next/date input) rewrites it with history.replaceState. An invalid ?date= is removed.
+ * Rose encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
+ * Each band ordered N, NE, E, SE, S, SW, W, NW.
+ * Values: 0 = no rating, 2 = Low, 4 = Moderate, 6 = Considerable, 8 = High, 10 = Extreme.
+ * Odd values mean "pockets of" level v+1 over base level v-1 (1 = pockets of Low over no rating).
+ * They are drawn as diagonal stripes: base color = level v-1, stripes = level v+1.
+ * Pages must be served over http(s); fetch() of the JSON files does not work from file://.
+ */
+const ZONE = {center: 'uac', slug: 'salt-lake', name: 'Salt Lake', id: 1738};   // id: top-level feature id in the map-layer API (fallback match)
+const DATA_DIR = 'data/avy/' + ZONE.center + '/' + ZONE.slug + '/';
+const INDEX_URL = DATA_DIR + 'index.json';
+function dayUrl(date) { return DATA_DIR + date + '.json'; }
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** YYYY-MM-DD that is also a real calendar day (rejects 2025-02-31). */
+const isDate = s => DATE_RE.test(s) && !isNaN(Date.parse(s + 'T00:00:00Z')) && new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) === s;
+
+/* ================= Constants ================= */
+const FT_PER_M = 3.28084;
+const LOW_MAX_M = 2438.4;   // 8,000 ft: below = low band
+const MID_MAX_M = 2895.6;   // 9,500 ft: up to and including = mid band; above = upper
+const BAND_OFFSET = {upper: 0, mid: 8, low: 16};
+const ASPECTS = ['N','NE','E','SE','S','SW','W','NW'];
+// Every level paints at full per-pixel alpha; overall opacity comes from the
+// Danger opacity slider (layer opacity), so Low is as visible as the rest.
+const LEVELS = {   // by even level value
+  2:  {name: 'Low',          rgb: [0x50,0xB8,0x48], alpha: 1},
+  4:  {name: 'Moderate',     rgb: [0xFF,0xF2,0x00], alpha: 1},
+  6:  {name: 'Considerable', rgb: [0xF7,0x94,0x1E], alpha: 1},
+  8:  {name: 'High',         rgb: [0xED,0x1C,0x24], alpha: 1},
+  10: {name: 'Extreme',      rgb: [0x23,0x1F,0x20], alpha: 1}
+};
+const SLOPE_RAMP_LO = 25, SLOPE_RAMP_HI = 35, FLAT_DEG = 5;
+const EARTH_CIRC = 40075016.686;
+const DEM_MAX_Z = 15;
+const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+const ZONE_URL = 'https://api.avalanche.org/v2/public/products/map-layer/UAC';
+const DEM_CACHE_MAX = 100;   // ~1.2 MB per derived tile; kept small for phones
+const RAW_CACHE_MAX = 150;   // raw tiles only feed neighbours of tiles being derived; ~256 KB each
+const HATCH_PERIOD = 12;                   // px along x (or y) between stripe starts; stripe = half
+const SVG_HATCH = 8;                       // rose pattern tile size, SVG units
+
+/** UAC forecast page for a zone slug + ISO date (YYYY-MM-DD); no leading zeros. Split, not Date(), to avoid TZ shifts. */
+function uacForecastUrl(slug, isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return 'https://utahavalanchecenter.org/forecast/' + slug + '/' + m + '/' + d + '/' + y;
+}
+
+/* ================= Remembered settings (localStorage; every access guarded) ================= */
+const SETTINGS_PREFIX = 'avyMap.';
+const BASEMAP_IDS = ['osmHill', 'topo', 'cyclo'];
+const DEFAULTS = {mode: 'all', basemap: 'osmHill', opacity: 50};   // opacity in percent
+function loadSetting(key) {
+  try { return localStorage.getItem(SETTINGS_PREFIX + key); } catch (e) { return null; }
+}
+function saveSetting(key, val) {
+  try { localStorage.setItem(SETTINGS_PREFIX + key, String(val)); } catch (e) { /* storage unavailable: ignore */ }
+}
+function restoredMode() {
+  const v = loadSetting('mode');
+  return (v === 'slope' || v === 'all') ? v : DEFAULTS.mode;
+}
+function restoredBasemap() {
+  const v = loadSetting('basemap');
+  return BASEMAP_IDS.includes(v) ? v : DEFAULTS.basemap;
+}
+function restoredOpacity() {
+  const v = loadSetting('opacity');
+  if (v === null || !/^\d{1,3}$/.test(v)) return DEFAULTS.opacity;
+  const n = parseInt(v, 10);
+  // A saved 0% would reopen with no visible overlay, so it restores as the default.
+  return (n > 0 && n <= 100 && n % 5 === 0) ? n : DEFAULTS.opacity;
+}
+
+/** Base and stripe LEVELS entries for a rose value; odd = pockets of v+1 over v-1. Either may be undefined. */
+function cellLevels(v) {
+  if (v % 2 === 0) return {base: LEVELS[v], stripe: undefined};
+  return {base: LEVELS[v - 1], stripe: LEVELS[v + 1]};
+}
+/** Human text for a rose value, e.g. "Moderate", "Pockets of Moderate", "No rating". */
+function levelText(v) {
+  const lv = cellLevels(v);
+  if (lv.stripe) return 'Pockets of ' + lv.stripe.name;
+  return lv.base ? lv.base.name : 'No rating';
+}
+
+/* ================= Map + basemaps ================= */
+const map = L.map('map', {center: [40.60, -111.65], zoom: 12, minZoom: 9, maxZoom: 17});
+
+const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+  maxZoom: 17, zIndex: 1,
+  attribution: 'Map data: &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+});
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, zIndex: 1,
+  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
+const cyclo = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+  maxZoom: 17, zIndex: 1,
+  attribution: '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases" title="CyclOSM">CyclOSM</a> | Map data &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
+map.attributionControl.setPrefix(false);
+map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen)');
+let uacAttrib = null;   // current "Forecast: UAC" attribution string
+function setUacAttribution(date) {   // date null -> UAC home page
+  const href = date ? uacForecastUrl(ZONE.slug, date) : 'https://utahavalanchecenter.org/';
+  const html = 'Forecast: <a href="' + href + '" target="_blank" rel="noopener">Utah Avalanche Center</a>';
+  if (uacAttrib) map.attributionControl.removeAttribution(uacAttrib);
+  map.attributionControl.addAttribution(html);
+  uacAttrib = html;
+}
+
+/* ================= DEM loading + derived terrain ================= */
+const demCache = new Map();   // key -> {promise, data}
+
+function demKey(z, x, y) { return z + '/' + x + '/' + y; }
+
+/** Latitude (deg) of fractional world-pixel row wy at zoom z. */
+function latOfWorldY(wy, z) {
+  const n = Math.PI - 2 * Math.PI * wy / (256 * Math.pow(2, z));
+  return Math.atan(Math.sinh(n)) * 180 / Math.PI;
+}
+
+const rawCache = new Map();   // key -> {promise, data}; data = Float32Array(65536) of elevations (m)
+
+/** Decode a Terrarium image to metres: R*256 + G + B/256 - 32768. */
+function decodeRaw(img) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, 256, 256).data;
+  const raw = new Float32Array(65536);
+  for (let n = 0; n < 65536; n++) {
+    const i = n * 4;
+    raw[n] = px[i] * 256 + px[i + 1] + px[i + 2] / 256 - 32768;
+  }
+  return raw;
+}
+
+function loadRaw(z, x, y) {
+  const key = demKey(z, x, y);
+  const hit = rawCache.get(key);
+  if (hit) return hit.promise;
+  const entry = {data: null, promise: null};
+  entry.promise = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try { entry.data = decodeRaw(img); resolve(entry.data); }
+      catch (err) { reject(err); }
+    };
+    img.onerror = () => reject(new Error('DEM tile failed: ' + key));
+    img.src = DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  }).catch(err => { if (rawCache.get(key) === entry) rawCache.delete(key); throw err; });
+  rawCache.set(key, entry);
+  if (rawCache.size > RAW_CACHE_MAX) rawCache.delete(rawCache.keys().next().value);
+  return entry.promise;
+}
+
+/*
+ * Aspect sign convention (the important part):
+ *  Image rows grow SOUTHWARD, columns grow EASTWARD.
+ *  dzdx = d(elev)/d(east)  (+ when ground rises to the east)
+ *  dzdy = d(elev)/d(row)   (+ when ground rises to the south, i.e. drops to the north)
+ *  Downhill vector (what the slope "faces") = -gradient:
+ *    east component  = -dzdx
+ *    north component = -(d elev/d north) = -(-dzdy) = +dzdy
+ *  bearing = atan2(east, north), clockwise from N.
+ *  Check: ground drops to the north -> dzdy>0, dzdx=0 -> atan2(0,+)=0 deg = N.
+ *  Check: ground drops to the east  -> dzdx<0 -> atan2(+,0)=90 deg = E.
+ */
+/** Pure: slope/aspect/hillshade for the 256x256 interior of a 258x258 padded elevation grid (row-major, metres). */
+function deriveTerrain(pad, z, ty) {
+  const W = 258;
+  const elev = new Float32Array(256 * 256);
+  const slope2 = new Uint8Array(256 * 256);   // slope in half-degrees
+  const aspect = new Uint8Array(256 * 256);   // sector 0..7
+  const hill = new Uint8Array(256 * 256);     // hillshade 0..255 (neutral/flat = 255)
+  const sunAz = 315 * Math.PI / 180, zen = 45 * Math.PI / 180;
+  const cosZ = Math.cos(zen), sinZ = Math.sin(zen);
+  const metersPerPx0 = EARTH_CIRC / (256 * Math.pow(2, z));
+  for (let r = 0; r < 256; r++) {
+    const lat = latOfWorldY(ty * 256 + r + 0.5, z);
+    const cell = metersPerPx0 * Math.cos(lat * Math.PI / 180);   // same in x and y (Mercator)
+    for (let c = 0; c < 256; c++) {
+      const p = (r + 1) * W + c + 1;
+      const a = pad[p - W - 1], b = pad[p - W], cc = pad[p - W + 1];
+      const d = pad[p - 1], e = pad[p], f = pad[p + 1];
+      const g = pad[p + W - 1], h = pad[p + W], i = pad[p + W + 1];
+      const dzdx = ((cc + 2 * f + i) - (a + 2 * d + g)) / (8 * cell);
+      const dzdy = ((g + 2 * h + i) - (a + 2 * b + cc)) / (8 * cell);
+      const n = r * 256 + c;
+      elev[n] = e;
+      const slopeRad = Math.atan(Math.hypot(dzdx, dzdy));
+      slope2[n] = Math.min(255, Math.floor(slopeRad * 180 / Math.PI * 2));   // floor: 4.9° stays below the 5° cutoff
+      let brg = Math.atan2(-dzdx, dzdy) * 180 / Math.PI;     // see convention note
+      if (brg < 0) brg += 360;
+      aspect[n] = Math.floor(((brg + 22.5) % 360) / 45);
+      const aspRad = brg * Math.PI / 180;
+      const shade = cosZ * Math.cos(slopeRad) + sinZ * Math.sin(slopeRad) * Math.cos(sunAz - aspRad);
+      const v = Math.max(0, Math.min(1, shade / cosZ));      // flat = 1, only darkens
+      hill[n] = Math.round(255 * (0.35 + 0.65 * v));
+    }
+  }
+  return {elev, slope2, aspect, hill};
+}
+
+/** Build the 258x258 pad from the centre raw tile and the 8 neighbours (null = missing -> edge replication). */
+function buildPad(nb) {
+  const W = 258;
+  const ctr = nb[4];
+  const pad = new Float32Array(W * W);
+  for (let r = 0; r < 256; r++) pad.set(ctr.subarray(r * 256, r * 256 + 256), (r + 1) * W + 1);
+  // replicate edges first (fallback for any missing neighbour)
+  for (let c = 0; c < 256; c++) { pad[c + 1] = pad[W + c + 1]; pad[257 * W + c + 1] = pad[256 * W + c + 1]; }
+  for (let r = 0; r < 258; r++) { pad[r * W] = pad[r * W + 1]; pad[r * W + 257] = pad[r * W + 256]; }
+  // then overwrite with neighbour data where present. nb index = (dy+1)*3 + (dx+1)
+  const N = nb[1], S = nb[7], Wt = nb[3], E = nb[5];
+  if (N) for (let c = 0; c < 256; c++) pad[c + 1] = N[255 * 256 + c];
+  if (S) for (let c = 0; c < 256; c++) pad[257 * W + c + 1] = S[c];
+  if (Wt) for (let r = 0; r < 256; r++) pad[(r + 1) * W] = Wt[r * 256 + 255];
+  if (E) for (let r = 0; r < 256; r++) pad[(r + 1) * W + 257] = E[r * 256];
+  if (nb[0]) pad[0] = nb[0][255 * 256 + 255];
+  if (nb[2]) pad[257] = nb[2][255 * 256];
+  if (nb[6]) pad[257 * W] = nb[6][255];
+  if (nb[8]) pad[257 * W + 257] = nb[8][0];
+  return pad;
+}
+
+function loadDem(z, x, y) {
+  const key = demKey(z, x, y);
+  const hit = demCache.get(key);
+  if (hit) return hit.promise;
+  const entry = {data: null, promise: null};
+  const n = Math.pow(2, z);
+  const tiles = [];   // centre is index 4
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= n) tiles.push(Promise.resolve(null));   // off the world: missing
+      else tiles.push(loadRaw(z, (((x + dx) % n) + n) % n, ny));  // x wraps
+    }
+  }
+  entry.promise = Promise.allSettled(tiles).then(res => {
+    if (res[4].status === 'rejected') throw res[4].reason;
+    const nb = res.map(r => (r.status === 'fulfilled' ? r.value : null));
+    entry.data = deriveTerrain(buildPad(nb), z, y);
+    return entry.data;
+  }).catch(err => { if (demCache.get(key) === entry) demCache.delete(key); throw err; });
+  demCache.set(key, entry);
+  if (demCache.size > DEM_CACHE_MAX) demCache.delete(demCache.keys().next().value);
+  return entry.promise;
+}
+
+/* ================= Zone polygon ================= */
+let zone = null;   // {polys: [[ring,...],...] in [lng,lat], bbox: L.LatLngBounds} or null
+let mode = restoredMode();   // 'slope' | 'all'
+
+function zonePolys(geom) {
+  if (geom.type === 'Polygon') return [geom.coordinates];
+  if (geom.type === 'MultiPolygon') return geom.coordinates;
+  throw new Error('Unexpected geometry ' + geom.type);
+}
+
+function pointInZone(lat, lng) {
+  if (!zone) return true;
+  let inside = false;   // even-odd across every ring handles holes + multipolygons
+  for (const poly of zone.polys) {
+    for (const ring of poly) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        if ((yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+      }
+    }
+  }
+  return inside;
+}
+
+/* ================= Notice (list of lines) ================= */
+const noticeLines = [];
+function addNotice(line) {
+  noticeLines.push(line);
+  const n = document.getElementById('notice');
+  n.textContent = noticeLines.join('\n');
+  n.hidden = false;
+  map.invalidateSize();   // the notice sits above the map and shrinks it
+}
+
+const zoneReady = fetch(ZONE_URL, {signal: AbortSignal.timeout(8000)})
+  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  .then(fc => {
+    const feat = (fc.features || []).find(f => f.properties && f.properties.name === ZONE.name) ||
+      (fc.features || []).find(f => f.id === ZONE.id);
+    if (!feat) throw new Error('zone "' + ZONE.name + '" (id ' + ZONE.id + ') not found');
+    const polys = zonePolys(feat.geometry);
+    const b = L.latLngBounds([]);
+    polys.forEach(p => p[0].forEach(c => b.extend([c[1], c[0]])));
+    zone = {polys, bbox: b};
+    L.geoJSON(feat, {style: {fill: false, color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#58a6ff', weight: 2.5, opacity: 0.9}, interactive: false}).addTo(map);
+  })
+  .catch(err => {
+    console.warn('Zone polygon unavailable:', err);
+    addNotice('Zone outline unavailable (' + err.message + '); overlay shown unclipped.');
+  });
+
+/* ================= Overlay painting ================= */
+// Current day state. rose = 24 validated ints, or null when there is nothing to paint.
+let day = null;        // loaded day JSON
+let rose = null;
+let statusMsg = 'Loading forecast\u2026';   // shown instead of a level while rose is null
+let shownDate = null;  // date the UAC links point at, or null
+// LUT: index 0..23 -> null, [r,g,b,alpha] (solid) or [r,g,b,alpha,sr,sg,sb,salpha] (hatched:
+// base color + stripe color; a transparent base has alpha 0). Rebuilt whenever the day changes.
+let LUT = [];
+function rebuildLut() {
+  LUT = rose ? rose.map(v => {
+    const {base, stripe} = cellLevels(v);
+    if (!stripe) return base ? [base.rgb[0], base.rgb[1], base.rgb[2], base.alpha] : null;
+    const br = base ? base.rgb : stripe.rgb;   // transparent base: color unused (alpha 0)
+    return [br[0], br[1], br[2], base ? base.alpha : 0, stripe.rgb[0], stripe.rgb[1], stripe.rgb[2], stripe.alpha];
+  }) : [];
+}
+
+function bandOffset(elevM) {
+  if (elevM < LOW_MAX_M) return BAND_OFFSET.low;
+  if (elevM <= MID_MAX_M) return BAND_OFFSET.mid;
+  return BAND_OFFSET.upper;
+}
+
+function slopeRamp(deg) {
+  const t = (deg - SLOPE_RAMP_LO) / (SLOPE_RAMP_HI - SLOPE_RAMP_LO);
+  return t <= 0 ? 0 : (t >= 1 ? 1 : t);
+}
+
+function tileMask(canvas, coords) {
+  if (canvas._mask) return canvas._mask;
+  const m = document.createElement('canvas');
+  m.width = m.height = 256;
+  const ctx = m.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  const ox = coords.x * 256, oy = coords.y * 256;
+  for (const poly of zone.polys) {
+    for (const ring of poly) {
+      ring.forEach((c, k) => {
+        const p = map.project(L.latLng(c[1], c[0]), coords.z);
+        if (k === 0) ctx.moveTo(p.x - ox, p.y - oy); else ctx.lineTo(p.x - ox, p.y - oy);
+      });
+      ctx.closePath();
+    }
+  }
+  ctx.fill('evenodd');
+  canvas._mask = m;
+  return m;
+}
+
+function paintOverlay(canvas, coords, dem) {
+  const ctx = canvas.getContext('2d');
+  if (!rose) {   // nothing to paint: clear any earlier day's colors
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, 256, 256);
+    return;
+  }
+  const img = ctx.createImageData(256, 256);
+  const out = img.data;
+  // Stripes follow world pixels (wx + wy) at this zoom, so they line up across tile edges.
+  const wOff = (((coords.x * 256 + coords.y * 256 + 1) % HATCH_PERIOD) + HATCH_PERIOD) % HATCH_PERIOD;   // +1: pixel centres
+  for (let n = 0; n < 65536; n++) {
+    const slope = dem.slope2[n] / 2;
+    let a;
+    if (mode === 'slope') a = slopeRamp(slope);
+    else a = slope < FLAT_DEG ? 0 : 1;
+    if (a === 0) continue;
+    const ent = LUT[bandOffset(dem.elev[n]) + dem.aspect[n]];
+    if (!ent) continue;
+    const o = n * 4;
+    if (ent.length === 4) {
+      out[o] = ent[0]; out[o + 1] = ent[1]; out[o + 2] = ent[2];
+      out[o + 3] = Math.round(255 * ent[3] * a);
+      continue;
+    }
+    // Hatched: u = position in the period along the diagonal; dIn = signed distance (px, along x)
+    // inside the stripe edge. Perpendicular distance = dIn / sqrt2; a 1-px linear ramp antialiases.
+    const u = (wOff + (n & 255) + (n >> 8)) % HATCH_PERIOD;
+    const half = HATCH_PERIOD / 2;
+    const dIn = u < half ? Math.min(u, half - u) : -Math.min(u - half, HATCH_PERIOD - u);
+    const t = Math.max(0, Math.min(1, dIn / Math.SQRT2 + 0.5));   // stripe coverage
+    const wb = ent[3] * (1 - t), ws = ent[7] * t;                 // weights (alpha-premultiplied)
+    const A = wb + ws;
+    if (A <= 0) continue;
+    out[o]     = Math.round((ent[0] * wb + ent[4] * ws) / A);
+    out[o + 1] = Math.round((ent[1] * wb + ent[5] * ws) / A);
+    out[o + 2] = Math.round((ent[2] * wb + ent[6] * ws) / A);
+    out[o + 3] = Math.round(255 * A * a);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.putImageData(img, 0, 0);
+  if (zone) {
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(tileMask(canvas, coords), 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+const DangerLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    canvas._coords = coords;
+    if (zone) {   // skip fetching terrain for tiles wholly outside the zone's bounding box
+      const nw = map.unproject(L.point(coords.x * 256, coords.y * 256), coords.z);
+      const se = map.unproject(L.point((coords.x + 1) * 256, (coords.y + 1) * 256), coords.z);
+      if (!zone.bbox.intersects(L.latLngBounds(se, nw))) { setTimeout(() => done(null, canvas), 0); return canvas; }
+    }
+    loadDem(coords.z, coords.x, coords.y)
+      .then(dem => { paintOverlay(canvas, coords, dem); canvas._painted = true; done(null, canvas); })
+      .catch(err => { console.warn(err); done(err, canvas); });
+    return canvas;
+  },
+  repaint() {
+    for (const k in this._tiles) {
+      const cv = this._tiles[k].el;
+      if (!cv || !cv._painted) continue;
+      if (!rose) { cv.getContext('2d').clearRect(0, 0, 256, 256); continue; }   // no DEM needed to clear
+      const c = cv._coords;
+      const e = demCache.get(demKey(c.z, c.x, c.y));
+      if (e && e.data) paintOverlay(cv, c, e.data);
+      else loadDem(c.z, c.x, c.y).then(d => paintOverlay(cv, c, d)).catch(err => console.warn(err));   // evicted from cache
+    }
+  }
+});
+
+const HillLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    loadDem(coords.z, coords.x, coords.y).then(dem => {
+      const ctx = canvas.getContext('2d');
+      const img = ctx.createImageData(256, 256);
+      for (let n = 0; n < 65536; n++) {
+        const g = dem.hill[n], o = n * 4;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = g; img.data[o + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      done(null, canvas);
+    }).catch(err => { console.warn(err); done(err, canvas); });
+    return canvas;
+  }
+});
+
+// Own hillshade computed from the same Terrarium DEM, multiply-blended (CSS) over OSM Standard.
+const hill = new HillLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 2, opacity: 0.8});
+hill.on('add', () => { hill.getContainer().style.mixBlendMode = 'multiply'; });
+const osmHill = L.layerGroup([osm, hill]);
+const BASEMAPS = {osmHill, topo, cyclo};   // id -> layer
+BASEMAPS[restoredBasemap()].addTo(map);
+
+let opacityPct = restoredOpacity();   // percent; 100 = fully opaque over the basemap
+const danger = new DangerLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 5, opacity: opacityPct / 100});
+zoneReady.then(() => danger.addTo(map));   // wait so tiles can be clipped from the first paint
+
+L.control.layers({
+  'OpenTopoMap': topo,
+  'OSM Standard + hillshade': osmHill,
+  'CyclOSM': cyclo
+}, {'Danger overlay': danger}, {collapsed: true}).addTo(map);
+map.on('baselayerchange', e => {
+  const id = BASEMAP_IDS.find(k => BASEMAPS[k] === e.layer);
+  if (id) saveSetting('basemap', id);
+});
+
+/* ================= Mode toggle ================= */
+const ModeControl = L.Control.extend({
+  options: {position: 'topleft'},
+  onAdd() {
+    const div = L.DomUtil.create('div', 'modebar');
+    const defs = [['slope', 'Slope-weighted'], ['all', 'All terrain']];
+    const btns = defs.map(([id, label]) => {
+      const b = L.DomUtil.create('button', '', div);
+      b.type = 'button'; b.textContent = label;
+      b.setAttribute('aria-pressed', String(id === mode));
+      b.addEventListener('click', () => {
+        mode = id;
+        saveSetting('mode', mode);
+        btns.forEach((x, i) => x.setAttribute('aria-pressed', String(defs[i][0] === mode)));
+        danger.repaint();
+      });
+      return b;
+    });
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  }
+});
+new ModeControl().addTo(map);
+
+/* ================= Danger opacity slider ================= */
+const OpacityControl = L.Control.extend({
+  options: {position: 'topleft'},
+  onAdd() {
+    const div = L.DomUtil.create('div', 'opacitybar');
+    div.innerHTML = '<label for="dangerOpacity">Danger opacity</label>' +
+      '<input id="dangerOpacity" type="range" min="0" max="100" step="5" value="' + opacityPct + '">' +
+      '<output for="dangerOpacity">' + opacityPct + '%</output>';
+    const input = div.querySelector('input'), out = div.querySelector('output');
+    input.addEventListener('input', () => {
+      danger.setOpacity(input.value / 100);
+      out.textContent = input.value + '%';
+      saveSetting('opacity', input.value);
+    });
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  }
+});
+new OpacityControl().addTo(map);
+
+/* ================= Rose panel ================= */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const RINGS = {upper: [14, 40], mid: [42, 66], low: [68, 92]};   // inner/outer radii
+
+function polar(r, deg) {
+  const t = deg * Math.PI / 180;
+  return [r * Math.sin(t), -r * Math.cos(t)];   // N up, clockwise
+}
+function wedgePath(r0, r1, a0, a1) {
+  const p = (r, a) => polar(r, a).map(v => v.toFixed(2)).join(' ');
+  return 'M' + p(r1, a0) + ' A' + r1 + ' ' + r1 + ' 0 0 1 ' + p(r1, a1) +
+         ' L' + p(r0, a1) + ' A' + r0 + ' ' + r0 + ' 0 0 0 ' + p(r0, a0) + ' Z';
+}
+
+const roseCells = [];   // index 0..23, same as forecast array
+const roseTitles = [];  // <title> elements, same indexing
+(function buildRose() {
+  const svg = document.getElementById('roseSvg');
+  // One hatch pattern per odd value. Horizontal bands rotated -45deg run "/" like the map stripes.
+  const defs = document.createElementNS(SVGNS, 'defs');
+  for (const v of [1, 3, 5, 7, 9]) {
+    const {base, stripe} = cellLevels(v);
+    const pat = document.createElementNS(SVGNS, 'pattern');
+    pat.setAttribute('id', 'pk-' + v);
+    pat.setAttribute('patternUnits', 'userSpaceOnUse');
+    pat.setAttribute('width', SVG_HATCH); pat.setAttribute('height', SVG_HATCH);
+    pat.setAttribute('patternTransform', 'rotate(-45)');
+    if (base) {
+      const b = document.createElementNS(SVGNS, 'rect');
+      b.setAttribute('width', SVG_HATCH); b.setAttribute('height', SVG_HATCH);
+      b.setAttribute('fill', 'rgb(' + base.rgb.join(',') + ')');
+      pat.appendChild(b);
+    }
+    const st = document.createElementNS(SVGNS, 'rect');
+    st.setAttribute('width', SVG_HATCH); st.setAttribute('height', SVG_HATCH / 2);
+    st.setAttribute('fill', 'rgb(' + stripe.rgb.join(',') + ')');
+    pat.appendChild(st);
+    defs.appendChild(pat);
+  }
+  svg.appendChild(defs);
+  for (const band of ['upper', 'mid', 'low']) {
+    for (let k = 0; k < 8; k++) {
+      const idx = BAND_OFFSET[band] + k;
+      const path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('d', wedgePath(RINGS[band][0], RINGS[band][1], k * 45 - 22.5, k * 45 + 22.5));
+      path.setAttribute('class', 'cell');
+      path.setAttribute('fill', 'none');
+      const t = document.createElementNS(SVGNS, 'title');
+      t.textContent = 'No data';
+      path.appendChild(t);
+      svg.appendChild(path);
+      roseCells[idx] = path;
+      roseTitles[idx] = {el: t, label: ASPECTS[k] + ' ' + band};
+    }
+  }
+  [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([s, a]) => {
+    const tx = document.createElementNS(SVGNS, 'text');
+    const [x, y] = polar(102, a);
+    tx.setAttribute('x', x); tx.setAttribute('y', y);
+    tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('dominant-baseline', 'central');
+    tx.textContent = s;
+    svg.appendChild(tx);
+  });
+  const lg = document.getElementById('legend');
+  Object.keys(LEVELS).forEach(k => {
+    const s = document.createElement('span');
+    s.innerHTML = '<i style="background:rgb(' + LEVELS[k].rgb.join(',') + ')"></i>' + LEVELS[k].name;
+    lg.appendChild(s);
+  });
+  const pk = document.createElement('span');
+  const lo = LEVELS[2].rgb.join(','), mo = LEVELS[4].rgb.join(',');
+  pk.innerHTML = '<i style="background:repeating-linear-gradient(135deg,rgb(' + lo + ') 0 3px,rgb(' + mo + ') 3px 6px)"></i>Pockets of next level';
+  lg.appendChild(pk);
+  const ring = document.createElement('span');
+  ring.textContent = 'Rings: inner upper (>9,500 ft), middle mid, outer low (<8,000 ft)';
+  ring.style.flexBasis = '100%';
+  lg.appendChild(ring);
+})();
+
+/** Refresh the rose panel, UAC links and attribution from day / rose / statusMsg / shownDate. Reusable on date change. */
+function showDay() {
+  for (let idx = 0; idx < 24; idx++) {
+    let fill = 'none';
+    if (rose) {
+      const v = rose[idx];
+      const lv = cellLevels(v);
+      if (v % 2 === 1) fill = 'url(#pk-' + v + ')';
+      else if (lv.base) fill = 'rgb(' + lv.base.rgb.join(',') + ')';
+    }
+    roseCells[idx].setAttribute('fill', fill);
+    roseTitles[idx].el.textContent = rose ? roseTitles[idx].label + ': ' + levelText(rose[idx]) : 'No data';
+  }
+  // The date input shows the date, so this line is the status line.
+  let line = statusMsg;
+  if (rose) line = (day && day.sample === true) ? 'Sample data' : '';
+  document.getElementById('roseDate').textContent = line;
+  const link = document.getElementById('roseLink');
+  if (shownDate) { link.href = uacForecastUrl(ZONE.slug, shownDate); link.hidden = false; }
+  else { link.removeAttribute('href'); link.hidden = true; }
+  setUacAttribution(shownDate);
+  syncSwitcher();
+}
+
+/** Make newDay (validated) or nothing (newDay null, msg explains) the current day, and repaint. */
+function setDay(newDay, date, msg) {
+  day = newDay;
+  rose = newDay ? newDay.overall_danger_rose : null;
+  statusMsg = msg || '';
+  shownDate = date;
+  rebuildLut();
+  showDay();
+  danger.repaint();
+  setReadout('Hover the map');   // the old readout and highlight belonged to the previous day
+}
+
+let hlIdx = -1;
+function highlight(idx) {
+  if (idx === hlIdx) return;
+  if (hlIdx >= 0) roseCells[hlIdx].classList.remove('hl');
+  hlIdx = idx;
+  if (idx >= 0) {
+    const c = roseCells[idx];
+    c.classList.add('hl');
+    c.parentNode.appendChild(c);   // bring to front so the outline isn't covered
+  }
+}
+
+/* ================= Hover lookup ================= */
+const readout = document.getElementById('readout');
+function setReadout(txt, idx) { readout.textContent = txt; highlight(idx === undefined ? -1 : idx); }
+
+function lookup(latlng) {
+  if (!map.hasLayer(danger)) { setReadout('Danger overlay is off'); return; }
+  if (!pointInZone(latlng.lat, latlng.lng)) { setReadout('Outside the ' + ZONE.name + ' zone'); return; }
+  const z = Math.min(map.getZoom(), DEM_MAX_Z);
+  const wp = map.project(latlng, z);
+  const tx = Math.floor(wp.x / 256), ty = Math.floor(wp.y / 256);
+  const e = demCache.get(demKey(z, tx, ty));
+  if (!e || !e.data) { setReadout('Loading terrain...'); if (!e) loadDem(z, tx, ty).catch(() => {}); return; }
+  const c = Math.min(255, Math.floor(wp.x - tx * 256)), r = Math.min(255, Math.floor(wp.y - ty * 256));
+  const n = r * 256 + c;
+  const elevM = e.data.elev[n], slope = e.data.slope2[n] / 2, asp = e.data.aspect[n];
+  const ft = Math.round(elevM * FT_PER_M).toLocaleString('en-US');
+  if (slope < FLAT_DEG) { setReadout('Flat ground (<' + FLAT_DEG + '°) · ' + ft + ' ft · aspect not meaningful'); return; }
+  const idx = bandOffset(elevM) + asp;
+  const lvTxt = rose ? levelText(rose[idx]) : statusMsg;
+  let txt = ASPECTS[asp] + ' · ' + ft + ' ft · ' + Math.round(slope) + '° · ' + lvTxt;
+  if (rose && mode === 'slope' && slope < SLOPE_RAMP_LO) txt += ' (not shaded: <' + SLOPE_RAMP_LO + '°)';
+  setReadout(txt, rose ? idx : undefined);
+}
+
+let pending = null, raf = 0;
+function schedule(ll) {
+  pending = ll;
+  if (raf) return;
+  raf = requestAnimationFrame(() => { raf = 0; if (pending) lookup(pending); });
+}
+map.on('mousemove', e => schedule(e.latlng));
+map.on('click', e => schedule(e.latlng));   // phones: tap to query
+map.on('mouseout', () => { pending = null; setReadout('Hover the map'); });
+map.on('zoomend', () => { pending = null; });
+L.DomEvent.disableClickPropagation(document.getElementById('rose'));
+L.DomEvent.disableScrollPropagation(document.getElementById('rose'));
+
+/* ================= Date switcher ================= */
+const dateInput = document.getElementById('dateInput');
+const datePrev = document.getElementById('datePrev');
+const dateNext = document.getElementById('dateNext');
+
+/** Latest index date strictly before d, or null. ISO dates compare correctly as strings. */
+function prevIndexDate(d) {
+  if (!indexDates || !d) return null;
+  let best = null;
+  for (const x of indexDates) if (x < d && (best === null || x > best)) best = x;
+  return best;
+}
+/** Earliest index date strictly after d, or null. */
+function nextIndexDate(d) {
+  if (!indexDates || !d) return null;
+  let best = null;
+  for (const x of indexDates) if (x > d && (best === null || x < best)) best = x;
+  return best;
+}
+
+/** Single place that syncs the switcher (value, min, max, disabled) to shownDate and indexDates. */
+function syncSwitcher() {
+  const off = location.protocol === 'file:';
+  dateInput.disabled = off;
+  dateInput.value = shownDate || '';
+  if (indexDates) {
+    dateInput.min = indexDates.reduce((a, b) => (b < a ? b : a));
+    dateInput.max = indexDates.reduce((a, b) => (b > a ? b : a));
+  } else {
+    dateInput.removeAttribute('min');
+    dateInput.removeAttribute('max');
+  }
+  const pv = prevIndexDate(shownDate), nx = nextIndexDate(shownDate);
+  datePrev.disabled = off || pv === null;
+  dateNext.disabled = off || nx === null;
+  datePrev.title = off ? 'Date switching needs the page served over http' : pv ? 'Previous forecast: ' + pv : 'No earlier forecast';
+  dateNext.title = off ? 'Date switching needs the page served over http' : nx ? 'Next forecast: ' + nx : 'No later forecast';
+}
+
+/** Put ?date= in the address bar (null removes it), keeping other params and the hash. */
+function setUrlDate(date) {
+  try {
+    const u = new URL(location.href);
+    if (date) u.searchParams.set('date', date); else u.searchParams.delete('date');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  } catch (e) { console.warn('Could not update URL:', e); }
+}
+
+/** User-driven day change: URL first, then load (loadDay sets shownDate, which syncs the switcher). */
+function pickDate(date) {
+  setUrlDate(date);
+  loadDay(date);
+}
+datePrev.addEventListener('click', () => { const d = prevIndexDate(shownDate); if (d) pickDate(d); });
+dateNext.addEventListener('click', () => { const d = nextIndexDate(shownDate); if (d) pickDate(d); });
+dateInput.addEventListener('change', () => {
+  const v = dateInput.value;
+  if (!DATE_RE.test(v)) { dateInput.value = shownDate || ''; return; }   // empty/partial: restore
+  if (v !== shownDate) pickDate(v);
+});
+
+/* ================= Forecast loader ================= */
+let reqToken = 0;        // monotonically increasing; a response from an older request is dropped
+let indexDates = null;   // validated index dates, or null if the index is unavailable
+
+/** fetch + parse JSON. Rejects with err.kind = 'fetch' (network), 'http' (non-OK) or 'parse' (bad JSON). */
+async function fetchJson(url) {
+  let r;
+  try { r = await fetch(url, {cache: 'no-cache'}); }
+  catch (e) { const err = new Error('network error'); err.kind = 'fetch'; throw err; }
+  if (!r.ok) { const err = new Error('HTTP ' + r.status); err.kind = 'http'; err.status = r.status; throw err; }
+  try { return await r.json(); }
+  catch (e) { const err = new Error('bad JSON'); err.kind = 'parse'; throw err; }
+}
+
+function validRose(r) {
+  return Array.isArray(r) && r.length === 24 && r.every(v => Number.isInteger(v) && v >= 0 && v <= 10);
+}
+
+/** Load and show one day (YYYY-MM-DD). Safe to call repeatedly; only the latest call's result is applied. */
+async function loadDay(date) {
+  const token = ++reqToken;
+  setDay(null, date, 'Loading forecast\u2026');
+  if (indexDates && !indexDates.includes(date)) { setDay(null, date, 'No forecast for this date'); return; }
+  let d;
+  try { d = await fetchJson(dayUrl(date)); }
+  catch (err) {
+    if (token !== reqToken) return;
+    console.warn('Day file', date, err);
+    setDay(null, date, err.kind === 'parse' ? 'Forecast data malformed'
+      : err.status === 404 ? 'Forecast file missing for ' + date : 'Forecast could not be loaded');
+    return;
+  }
+  if (token !== reqToken) return;
+  if (!d || typeof d !== 'object' || !validRose(d.overall_danger_rose) || d.date !== date) {
+    setDay(null, date, 'Forecast data malformed');
+    return;
+  }
+  setDay(d, date, '');
+}
+
+async function initForecast() {
+  const q = new URLSearchParams(location.search).get('date');
+  const reqDate = (q !== null && isDate(q)) ? q : null;
+  if (q !== null && reqDate === null) setUrlDate(null);   // invalid ?date=: drop it, fall back to newest
+  if (location.protocol === 'file:') {
+    const msg = 'Serve over http (see README)';
+    addNotice(msg);
+    setDay(null, reqDate, msg);
+    return;
+  }
+  setDay(null, reqDate, 'Loading forecast\u2026');
+  const initToken = reqToken;   // a pick made while the index loads must win over the default day
+  try {
+    const idx = await fetchJson(INDEX_URL);
+    if (!idx || !Array.isArray(idx.dates) || idx.dates.length === 0 ||
+        !idx.dates.every(x => typeof x === 'string' && DATE_RE.test(x))) {
+      throw new Error('bad index');
+    }
+    indexDates = idx.dates;
+  } catch (err) {
+    console.warn('Forecast index unavailable:', err);
+    addNotice('Forecast index could not be loaded.');
+  }
+  syncSwitcher();
+  if (reqToken !== initToken) return;
+  if (indexDates) loadDay(reqDate || indexDates[indexDates.length - 1]);
+  else if (reqDate) loadDay(reqDate);
+  else setDay(null, null, 'No forecast available');
+}
+initForecast();
+</script>
+</body>
+</html>
