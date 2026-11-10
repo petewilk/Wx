@@ -12,7 +12,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 | 2 | Map shell | implementer | Add the Map option to View, load Leaflet, set up the full-height map and dark tiles, define when it fits, and show places as plain dots. | Done |
 | 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Done |
 | 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Done |
-| 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Not started |
+| 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Done |
 | 6 | Review and QA | ux-reviewer, qa-validator, implementer | Review usability, check edge cases on phone and in dark mode, and fix what they find. | Not started |
 | 7 | Docs and ship | doc-writer | Write the README and in-page notes, update CONTEXT.md, and merge to main. Deploying waits for your OK. | Not started |
 
@@ -329,3 +329,9 @@ _Each batch adds anything the next ones need to know here: deviations, open issu
   - Marker modes start at `'full'`; `mapSync` ends with `mapCollapse()`, which also runs on `zoomend` and `moveend`. z-order: full above collapsed, lower rank on top.
   - `placeFailed` wasn't extracted; `mapMarkerState` tests `status` directly (error: `status==='error'`).
   - Checked in the browser: arch colours, rank center, loading and error states, collapse order by rank at zoom 6 vs 11, hover ghost, light and dark, 16-day span, no console errors. Not checked: 375 px phone width, and touch (tooltips don't show on touch; the batch 5 popup carries the scores). OSM tiles render in light mode only in the preview pane.
+- **Batch 5:** Popup and map adds are in (`mapPopupEl`, `spanStats`, `mapOpenForecast`, `mapAddMenu`, `mapAddHere`, `mapPressStart/Move/Cancel`). Notes:
+  - Popup refreshes at the end of `mapSync` and closes on `mapLeave`, `mapDrop`, or when its marker disappears. Scores show for Climb-tagged places only. Retry shows on `status==='error'`.
+  - Popup and menu click handlers call `stopPropagation`: `toggleTag` rebuilds the buttons, and Leaflet otherwise treats the click as a map click and closes the popup.
+  - Tagging the map-added place with a tag the filter excludes (e.g. Run under a Climb filter) hides it and closes its popup, per the exemption rule.
+  - If you leave Map while the name lookup is in flight, the place is still added but no exempt is set and no popup opens.
+  - Checked with headless Chrome over synthetic events (right-click, long-press, cancel paths, light and dark, unit switch) and a final browser-pane check with no console errors. Not checked: real touch, iOS Safari, 375 px width, the 30-place cap message in the add menu (for batch 6).

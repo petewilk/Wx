@@ -231,6 +231,24 @@
   .wxmk .mkarch{position:absolute;overflow:visible;pointer-events:auto}
   .wxmk .mkn.mkc{top:30px}
   .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none}
+  #map{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  .wxpop .leaflet-popup-content-wrapper,.wxpop .leaflet-popup-tip{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+  .wxpop .leaflet-popup-content{margin:10px 12px;font:11px/1.4 system-ui,monospace;min-width:190px}
+  .wxpop a.leaflet-popup-close-button{color:var(--muted)}
+  .mpop .pt{font-size:13px;font-weight:700;padding-right:14px}
+  .mpop .pt .pr{color:var(--accent);margin-right:4px}
+  .mpop .ptags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+  .mpop button{font:inherit;font-size:11px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:12px;padding:3px 10px;cursor:pointer;min-height:26px}
+  .mpop button:hover{background:rgba(var(--accent-rgb),.1)}
+  .mpop button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
+  html.light .mpop button[aria-pressed=true]{color:#fff}
+  .mpop .pday{color:var(--muted);margin-bottom:2px}
+  .mpop .pst{display:flex;flex-wrap:wrap;gap:2px 12px}
+  .mpop .pth{display:flex;gap:6px;margin-top:6px}
+  .mpop .pth span{flex:1;text-align:center;border-radius:4px;padding:1px 4px;font-weight:700;font-variant-numeric:tabular-nums}
+  .mpop .pth small{display:block;font-weight:400;font-size:9px;opacity:.85}
+  .mpop .perr{color:var(--danger);margin-top:6px}
+  .mpop .pact{display:flex;gap:6px;margin-top:8px}
   footer{padding:10px 20px 20px;font-size:10px;color:var(--muted)}
   footer a{color:var(--accent);text-decoration:none}
   footer a:hover{text-decoration:underline}
@@ -612,8 +630,14 @@ var MAPS = {
   layer: null,      // L.layerGroup holding every place marker
   fitPending: true, // fit visible places at the next mapSync
   exempt: null,     // place added from the map, shown even when the Activity filter would hide it (batch 5)
-  ghost: null       // full marker shown while hovering a collapsed one
+  ghost: null,      // full marker shown while hovering a collapsed one
+  pop: null,        // the open L.popup (place popup or "Add place here" menu)
+  popP: null,       // place whose popup is open, null for the add menu
+  press: null,      // long-press state {id, x, y, timer, latlng}
+  touchAt: 0,       // time of the last touch pointerdown, to ignore the native contextmenu that follows a touch
+  pressedAt: 0      // time a long-press fired, to swallow the click that can follow it
 };
+var MAP_PRESS = { ms: 550, movePx: 10 };   // long-press: hold time (ms) and movement that cancels it (CSS px)
 var MAP_ARCH = { size: 50, r: 19, w: 7, span: 200, gap: 4 };   // pill arch: SVG size, radius, pill thickness (px), arc span and pill gap (degrees)
 var MAP_FIT = { padding: [40, 40], maxZoom: 11 };   // fitBounds options: maxZoom stops a lone place zooming to street level
 var MAP_MIN_H = 400, MAP_BOTTOM_PAD = 24;           // CSS px: minimum map height, space kept below it
@@ -3038,6 +3062,7 @@ function toggleOpen(p) {
 }
 
 function toggleTag(p, tag) {
+  if (p === MAPS.exempt) MAPS.exempt = null;   // a place added from the map follows the filter once it is tagged
   var i = p.tags.indexOf(tag);
   if (i >= 0) p.tags.splice(i, 1); else p.tags.push(tag);
   p.tags = cleanTags(p.tags);
@@ -3244,6 +3269,20 @@ function mapInit() {
     }).addTo(MAPS.map);
     MAPS.layer = L.layerGroup().addTo(MAPS.map);
     MAPS.map.on('zoomend moveend', mapCollapse);
+    MAPS.map.on('popupclose', function(e) { if (e.popup === MAPS.pop) { MAPS.pop = null; MAPS.popP = null; } });
+    MAPS.map.on('contextmenu', function(e) {   // right-click; a touch long-press is handled by mapPressStart instead
+      var oe = e.originalEvent;
+      if (oe && (oe.pointerType === 'touch' || Date.now() - MAPS.touchAt < 1500)) return;
+      mapAddMenu(e.latlng);
+    });
+    var c = MAPS.map.getContainer();
+    c.addEventListener('pointerdown', mapPressStart);
+    c.addEventListener('pointermove', mapPressMove);
+    c.addEventListener('pointerup', mapPressCancel);
+    c.addEventListener('pointercancel', mapPressCancel);
+    c.addEventListener('click', function(e) {   // a long-press can be followed by a click that would close the new popup
+      if (Date.now() - MAPS.pressedAt < 1500 && !(e.target.closest && e.target.closest('.leaflet-popup'))) { MAPS.pressedAt = 0; e.stopPropagation(); e.preventDefault(); }
+    }, true);
   } catch (e) {
     console.error('Map could not start', e);
     MAPS.ok = false;
@@ -3273,6 +3312,7 @@ function mapLeave() {
   if (!MAPS.ok || !MAPS.map) return;
   MAPS.map.closePopup();
   mapHoverOff();
+  mapPressCancel();
   MAPS.fitPending = true;
 }
 
@@ -3406,6 +3446,7 @@ function mapSync() {
       p.mk = L.marker([p.lat, p.lon], { icon: mapMakeIcon(html), title: p.label, keyboard: false });
       p.mk.on('mouseover', function() { mapHoverOn(p); });
       p.mk.on('mouseout', mapHoverOff);
+      p.mk.on('click', function() { mapOpenPopup(p, true); });
       p.mk.addTo(MAPS.layer);
     } else if (html !== p.mkHtml) {
       p.mkHtml = html;
@@ -3417,6 +3458,7 @@ function mapSync() {
     : !vis ? 'No places have the selected activity tags.' : null);
   if (MAPS.fitPending) { MAPS.fitPending = false; mapFit(); }
   mapCollapse();
+  mapPopupRefresh();
 }
 
 // Fit now if Map is showing; otherwise the next entry fits (setView sets the flag)
@@ -3497,6 +3539,174 @@ document.getElementById('mapDays').addEventListener('click', function(e) {
   var b = e.target.closest ? e.target.closest('button[data-day]') : null;
   if (b) mapPickDay(+b.getAttribute('data-day'), e.shiftKey);
 });
+
+// Max hi, min lo, summed total, max prob and ws over T.a..T.b; a field is null if any day is null (as in sortKey).
+// Returns null without data, without T or when T runs past this place's days
+function spanStats(p, T) {
+  var d = p && p.data && p.data.daily;
+  if (!d || !T || T.b >= d.length) return null;
+  var out = { hi: -Infinity, lo: Infinity, total: 0, prob: -Infinity, ws: -Infinity }, bad = {}, k;
+  for (k = T.a; k <= T.b; k++) {
+    var x = d[k];
+    if (!x) return null;
+    [['hi', x.hi], ['lo', x.lo], ['total', x.total], ['prob', x.prob], ['ws', x.ws]].forEach(function(f) {
+      if (f[1] == null || !isFinite(f[1])) { bad[f[0]] = true; return; }
+      if (f[0] === 'hi' || f[0] === 'prob' || f[0] === 'ws') out[f[0]] = Math.max(out[f[0]], f[1]);
+      else if (f[0] === 'lo') out.lo = Math.min(out.lo, f[1]);
+      else out.total += f[1];
+    });
+  }
+  Object.keys(bad).forEach(function(f) { out[f] = null; });
+  return out;
+}
+
+// Popup body as an HTML string (rebuilt on every mapSync; the element keeps its click listener)
+function mapPopupHtml(p) {
+  var T = TARGET, st = mapMarkerState(p), u = U(), s = '';
+  var rank = p.mapRank != null ? '<span class="pr">#' + p.mapRank + '</span>' : '';
+  s += '<div class="pt">' + rank + esc(p.label) + '</div>';
+  s += '<div class="ptags">' + TAGS.map(function(t) {
+    return '<button type="button" data-act="tag" data-tag="' + t + '" aria-pressed="' + (p.tags.indexOf(t) >= 0) + '">' + t + '</button>';
+  }).join('') + '</div>';
+  var S = spanStats(p, T), d = p.data && p.data.daily;
+  if (st === 'loading') s += '<div class="pday">Loading forecast…</div>';
+  else if (S && d) {
+    function dl(x) { return WD[x.wd] + ' ' + MON[x.mo - 1] + ' ' + x.d; }
+    s += '<div class="pday">' + dl(d[T.a]) + (T.b > T.a ? ' to ' + dl(d[T.b]) : '') + (T.b > T.a ? ' (span)' : '') + '</div>';
+    var hi = cv('temp', S.hi), lo = cv('temp', S.lo), pr = cv('precip', S.total), ws = cv('wind', S.ws);
+    s += '<div class="pst">' +
+      '<span>High ' + fv(hi, 0) + u.temp.u + '</span><span>Low ' + fv(lo, 0) + u.temp.u + '</span>' +
+      '<span>Precip ' + fv(pr, u.precip.dp) + ' ' + u.precip.u + (S.prob != null ? ' (' + Math.round(S.prob) + '%)' : '') + '</span>' +
+      '<span>Wind ' + fv(ws, 0) + ' ' + u.wind.u + '</span></div>';
+    var th = placeIsClimb(p) ? spanThirds(p, T) : null;
+    if (th) {
+      var P = pal();
+      s += '<div class="pth">' + th.map(function(v, i) {
+        var nm = THIRD_NAMES[i].charAt(0).toUpperCase() + THIRD_NAMES[i].slice(1);
+        return '<span style="background:' + climbBg(v, P) + ';color:' + climbFg(v, P) + '"><small>' + nm + '</small>' +
+          (v == null ? '–' : Math.round(v)) + '</span>';
+      }).join('') + '</div>';
+    }
+  } else if (st !== 'error') s += '<div class="pday">No forecast for the selected day.</div>';
+  if (st === 'error') s += '<div class="perr">' + (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + esc(p.err || 'unknown error') + '</div>';
+  var acts = '';
+  if (st === 'error') acts += '<button type="button" data-act="retry">Retry</button>';
+  if (p !== MAPS.exempt) acts += '<button type="button" data-act="open">Open forecast</button>';   // that row is hidden by the filter until tagged
+  return s + (acts ? '<div class="pact">' + acts + '</div>' : '');
+}
+
+function mapPopupEl(p) {
+  var el = document.createElement('div');
+  el.className = 'mpop';
+  el.wxHtml = mapPopupHtml(p);
+  el.innerHTML = el.wxHtml;
+  el.addEventListener('click', function(e) {
+    e.stopPropagation();   // the popup rebuilds its buttons on a tag change; a detached target would otherwise reach the map as a click and close the popup
+    var b = e.target.closest ? e.target.closest('button[data-act]') : null;
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'tag') toggleTag(p, b.getAttribute('data-tag'));
+    else if (act === 'open') mapOpenForecast(p);
+    else if (act === 'retry') loadPlace(p);
+  });
+  return el;
+}
+
+function mapPopupOffset(p) { return L.point(0, placeIsClimb(p) && p.mkMode === 'full' ? -30 : -12); }
+
+// Opens the popup for p at its marker. pan false keeps the map where it is (a place just added from the map)
+function mapOpenPopup(p, pan) {
+  if (!mapActive() || !p.mk) return;
+  mapHoverOff();
+  var pop = L.popup({ className: 'wxpop', offset: mapPopupOffset(p), autoPan: !!pan, maxWidth: 280, closeOnClick: true })
+    .setLatLng(p.mk.getLatLng()).setContent(mapPopupEl(p));
+  pop.openOn(MAPS.map);   // closes any popup that was open first
+  MAPS.pop = pop;
+  MAPS.popP = p;
+}
+
+// Keeps an open popup in step with ranks, tags, day, units and load state; closes it when its place is gone
+function mapPopupRefresh() {
+  if (!MAPS.pop || !MAPS.popP) return;
+  var p = MAPS.popP;
+  if (!p.mk || PLACES.indexOf(p) < 0) { MAPS.map.closePopup(); return; }
+  var el = MAPS.pop.getContent(), html = mapPopupHtml(p);
+  MAPS.pop.options.offset = mapPopupOffset(p);
+  if (el.wxHtml === html) return;
+  el.wxHtml = html;
+  el.innerHTML = html;
+  MAPS.pop.update();
+}
+
+function mapOpenForecast(p) {
+  if (p === MAPS.exempt || PLACES.indexOf(p) < 0) return;
+  setView('graphic');
+  if (!p.open) toggleOpen(p);
+  p.el.root.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// "Add place here" menu at latlng (right-click or long-press)
+function mapAddMenu(latlng) {
+  if (!mapActive()) return;
+  var full = PLACES.length >= MAX_PLACES, el = document.createElement('div');
+  el.className = 'mpop';
+  el.innerHTML = full ? '<div class="pday">Up to ' + MAX_PLACES + ' places</div>'
+    : '<div class="pact"><button type="button" data-act="add">Add place here</button></div>';
+  el.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (e.target.closest && e.target.closest('button[data-act="add"]')) { MAPS.map.closePopup(); mapAddHere(latlng); }
+  });
+  mapHoverOff();
+  var pop = L.popup({ className: 'wxpop', offset: L.point(0, 0), autoPan: false, closeButton: false, minWidth: 0 })
+    .setLatLng(latlng).setContent(el);
+  pop.openOn(MAPS.map);
+  MAPS.pop = pop;
+  MAPS.popP = null;
+}
+
+// Adds a place at latlng without moving the map. It stays visible with its popup open until it is tagged
+// or the Activity filter changes (MAPS.exempt), and has no rank number
+function mapAddHere(latlng) {
+  var ll = latlng.wrap(), lat = roundTo(ll.lat, 4), lon = roundTo(ll.lng, 4);
+  if (PLACES.length >= MAX_PLACES) { setStatus('Up to ' + MAX_PLACES + ' places', true); return; }
+  setStatus('Looking up place name…');
+  var coord = lat + ', ' + lon;
+  reverseLabel(lat, lon)
+    .then(function(n) { return 'Near ' + n; }, function() { return coord + ' (no place found)'; })
+    .then(function(label) {
+      var p = addPlace({ lat: lat, lon: lon, label: label });   // no mapRequestFit: the view stays put
+      if (!p || !mapActive()) return;
+      MAPS.exempt = p;
+      mapSync();
+      mapOpenPopup(p, false);
+    });
+}
+
+// Touch long-press for "Add place here" (iOS fires no contextmenu on long-press, and Leaflet 1.9 has no tap handler)
+function mapPressStart(e) {
+  if (e.pointerType !== 'touch') return;
+  MAPS.touchAt = Date.now();
+  MAPS.pressedAt = 0;   // a new touch begins: no stray click from the last press is coming
+  if (MAPS.press) { mapPressCancel(); return; }   // second finger: it is a pinch, not a press
+  if (e.target.closest && e.target.closest('.leaflet-marker-icon,.leaflet-popup,.leaflet-control')) return;
+  var pt = MAPS.map.mouseEventToContainerPoint(e);
+  MAPS.press = { id: e.pointerId, x: e.clientX, y: e.clientY, latlng: MAPS.map.containerPointToLatLng(pt), timer: null };
+  MAPS.press.timer = setTimeout(function() {
+    var ll = MAPS.press && MAPS.press.latlng;
+    MAPS.press = null;
+    if (!ll) return;
+    MAPS.pressedAt = Date.now();
+    mapAddMenu(ll);
+  }, MAP_PRESS.ms);
+}
+function mapPressMove(e) {
+  var s = MAPS.press;
+  if (s && e.pointerId === s.id && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MAP_PRESS.movePx) mapPressCancel();
+}
+function mapPressCancel() {
+  if (MAPS.press) clearTimeout(MAPS.press.timer);
+  MAPS.press = null;
+}
 
 function mapDrop(p) {
   if (p === MAPS.exempt) MAPS.exempt = null;
