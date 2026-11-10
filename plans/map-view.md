@@ -11,7 +11,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 | 1 | Design seams | architect | Decide the map module's state, functions and hooks into the existing render, ordering and ranking code. Write them into this file. | Done |
 | 2 | Map shell | implementer | Add the Map option to View, load Leaflet, set up the full-height map and dark tiles, define when it fits, and show places as plain dots. | Done |
 | 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Done |
-| 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Not started |
+| 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Done |
 | 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Not started |
 | 6 | Review and QA | ux-reviewer, qa-validator, implementer | Review usability, check edge cases on phone and in dark mode, and fix what they find. | Not started |
 | 7 | Docs and ship | doc-writer | Write the README and in-page notes, update CONTEXT.md, and merge to main. Deploying waits for your OK. | Not started |
@@ -323,3 +323,9 @@ _Each batch adds anything the next ones need to know here: deviations, open issu
   - `#mapDays` buttons are `.mdb` (rebuilt on every `mapSync`, so don't hold references). Ranked dots show a `.mkb` number badge until batch 4. Climb places are still dots; `spanThirds` isn't used by any marker yet.
   - Checked in the browser with one place only (single rank, picker, shift-click, no console errors). Not checked visually: dark mode, 375 px, multi-place ranking with GROUP on.
   - `syncViewChrome` has an odd `legend.hidden = map || legend.hidden` (batch 2 code), left alone.
+- **Batch 4:** Arch markers and overlap collapse are in (`archSvg`, `mapMarkerState`, `mapFootprint`, `mapCollapse`, `mapHoverOn/Off`, `MAP_ARCH`). Notes:
+  - Each pill has a thin `var(--text)` outline under it, so grey (none/loading/error) pills stay visible on light tiles. Added beyond the spec.
+  - Collapsed markers (`badge`, `dot`) drop the name label; hovering shows the full marker as a non-interactive ghost. Non-climb places also collapse, so their name goes too.
+  - Marker modes start at `'full'`; `mapSync` ends with `mapCollapse()`, which also runs on `zoomend` and `moveend`. z-order: full above collapsed, lower rank on top.
+  - `placeFailed` wasn't extracted; `mapMarkerState` tests `status` directly (error: `status==='error'`).
+  - Checked in the browser: arch colours, rank center, loading and error states, collapse order by rank at zoom 6 vs 11, hover ghost, light and dark, 16-day span, no console errors. Not checked: 375 px phone width, and touch (tooltips don't show on touch; the batch 5 popup carries the scores). OSM tiles render in light mode only in the preview pane.

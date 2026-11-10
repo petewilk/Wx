@@ -228,6 +228,8 @@
   .mdb[aria-pressed=true]{background:rgba(var(--accent-rgb),.22);box-shadow:inset 0 -2px 0 var(--accent)}
   .mdb:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   .wxmk .mkb{position:absolute;left:-9px;top:-9px;min-width:14px;height:14px;padding:0 2px;border-radius:9px;background:var(--accent);color:#fff;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;font:700 10px/14px system-ui,monospace;text-align:center;margin:-2px 0 0 -2px}
+  .wxmk .mkarch{position:absolute;overflow:visible;pointer-events:auto}
+  .wxmk .mkn.mkc{top:30px}
   .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none}
   footer{padding:10px 20px 20px;font-size:10px;color:var(--muted)}
   footer a{color:var(--accent);text-decoration:none}
@@ -609,8 +611,10 @@ var MAPS = {
   map: null,        // L.Map, created on first entry to Map view (its container must be visible)
   layer: null,      // L.layerGroup holding every place marker
   fitPending: true, // fit visible places at the next mapSync
-  exempt: null      // place added from the map, shown even when the Activity filter would hide it (batch 5)
+  exempt: null,     // place added from the map, shown even when the Activity filter would hide it (batch 5)
+  ghost: null       // full marker shown while hovering a collapsed one
 };
+var MAP_ARCH = { size: 50, r: 19, w: 7, span: 200, gap: 4 };   // pill arch: SVG size, radius, pill thickness (px), arc span and pill gap (degrees)
 var MAP_FIT = { padding: [40, 40], maxZoom: 11 };   // fitBounds options: maxZoom stops a lone place zooming to street level
 var MAP_MIN_H = 400, MAP_BOTTOM_PAD = 24;           // CSS px: minimum map height, space kept below it
 var MAP_DEFAULT_VIEW = { center: [39, -98], zoom: 3 };   // only until the first fit
@@ -962,7 +966,7 @@ function makePlace(loc) {
   return { lat: loc.lat, lon: loc.lon, label: loc.label, status: 'loading', err: '', ensStatus: 'idle',
            data: null, ens: null, fetchedAt: 0, attemptAt: 0, seq: 0, ensSeq: 0, el: null, layout: null,
            tags: loc.tags ? loc.tags.slice() : [], open: false, rank: null,
-           mk: null, mkHtml: '', mkMode: 'dot', mapRank: null };
+           mk: null, mkHtml: '', mkMode: 'full', mapRank: null };
 }
 
 // Placeholder lines under the rows: no places at all, or none matching the tag filter
@@ -3239,6 +3243,7 @@ function mapInit() {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(MAPS.map);
     MAPS.layer = L.layerGroup().addTo(MAPS.map);
+    MAPS.map.on('zoomend moveend', mapCollapse);
   } catch (e) {
     console.error('Map could not start', e);
     MAPS.ok = false;
@@ -3267,6 +3272,7 @@ function mapEnter() {
 function mapLeave() {
   if (!MAPS.ok || !MAPS.map) return;
   MAPS.map.closePopup();
+  mapHoverOff();
   MAPS.fitPending = true;
 }
 
@@ -3282,10 +3288,91 @@ function mapSize() {
 
 function mapVisible(p) { return placeVisible(p) || p === MAPS.exempt; }
 
-// Marker icon HTML: batch 2 draws a dot and the name for every place
+function placeIsClimb(p) { return p.tags.indexOf(CLIMB_TAG) >= 0; }
+
+// 'loading' (no data yet), 'error' (last load failed) or 'ok'
+function mapMarkerState(p) {
+  if (p.status === 'error') return 'error';
+  if (p.status === 'loading' && !p.data) return 'loading';
+  return 'ok';
+}
+
+// Sun-path arch: three pills along a ~200 degree arc over the top, morning left, midday top, afternoon right.
+// Origin of the SVG is the place; rank (or "!" on error) sits in the centre
+function archSvg(thirds, P, state, rank) {
+  var S = MAP_ARCH.size, c = S / 2, r = MAP_ARCH.r, span = MAP_ARCH.span, gap = MAP_ARCH.gap, seg = span / 3;
+  function pt(deg) { var a = deg * Math.PI / 180; return (c + r * Math.sin(a)).toFixed(2) + ' ' + (c - r * Math.cos(a)).toFixed(2); }
+  var s = '<svg class="mkarch" width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '" style="left:' + (-c) + 'px;top:' + (-c) + 'px">';
+  s += '<circle cx="' + c + '" cy="' + c + '" r="' + (r - MAP_ARCH.w / 2 - 1) + '" style="fill:var(--surface)" opacity=".92"/>';
+  for (var t = 0; t < 3; t++) {
+    var v = state === 'ok' && thirds ? thirds[t] : null;
+    var a0 = -span / 2 + seg * t + gap / 2, a1 = -span / 2 + seg * (t + 1) - gap / 2;
+    var tip = THIRD_NAMES[t].charAt(0).toUpperCase() + THIRD_NAMES[t].slice(1) + ': ' +
+      (state === 'loading' ? 'loading' : state === 'error' ? 'unavailable' : v == null ? 'no score' : Math.round(v));
+    var dd = 'M' + pt(a0) + ' A' + r + ' ' + r + ' 0 0 1 ' + pt(a1);
+    s += '<path d="' + dd + '" fill="none" style="stroke:var(--text)" opacity=".55" stroke-width="' + (MAP_ARCH.w + 3) + '" stroke-linecap="round"/>';   // outline so grey pills stay visible on any tile
+    s += '<path d="' + dd + '" fill="none" stroke="' + climbBg(v, P) +
+         '" stroke-width="' + MAP_ARCH.w + '" stroke-linecap="round"><title>' + tip + '</title></path>';
+  }
+  var txt = state === 'error' ? '!' : state === 'loading' || rank == null ? '' : String(rank);
+  if (txt) s += '<text x="' + c + '" y="' + (c + 5) + '" text-anchor="middle" font-size="' + (txt.length > 1 ? 12 : 14) +
+    '" font-weight="700" font-family="system-ui,monospace" style="fill:var(--text)">' + txt + '</text>';
+  return s + '</svg>';
+}
+
+// Marker icon HTML. mode: 'full' (arch for Climb places, dot or badge with name for others),
+// 'badge' (small rank number) or 'dot' (collapsed because it would overlap a full marker)
 function mapIconHtml(p, mode, P) {
-  var mark = p.mapRank != null ? '<div class="mkb">' + p.mapRank + '</div>' : '<div class="mkd"></div>';   // temporary rank badge (batch 4 replaces)
-  return mark + '<div class="mkn">' + esc(p.label) + '</div>';
+  var name = '<div class="mkn' + (placeIsClimb(p) && mode === 'full' ? ' mkc' : '') + '">' + esc(p.label) + '</div>';
+  if (mode === 'full' && placeIsClimb(p)) {
+    var st = mapMarkerState(p);
+    return archSvg(st === 'ok' ? spanThirds(p, TARGET) : null, P, st, p.mapRank) + name;
+  }
+  var mark = p.mapRank != null ? '<div class="mkb">' + p.mapRank + '</div>' : '<div class="mkd"></div>';
+  return mode === 'full' ? mark + name : mark;
+}
+
+// Pixel rectangle of a full marker relative to its place: the anchor is the arch centre (or dot centre)
+function mapFootprint(p) {
+  var nameW = Math.min(150, p.label.length * 6 + 10);
+  if (placeIsClimb(p)) {
+    var w = Math.max(MAP_ARCH.size + 6, nameW);
+    return { x0: -w / 2, x1: w / 2, y0: -MAP_ARCH.size / 2, y1: MAP_ARCH.size / 2 + 22 };
+  }
+  var w2 = Math.max(16, nameW);
+  return { x0: -w2 / 2, x1: w2 / 2, y0: -9, y1: 24 };
+}
+
+// Greedy collapse in rank order (unranked last): a place keeps its full marker unless it overlaps one already placed
+function mapCollapse() {
+  if (!mapActive()) return;
+  var pts = PLACES.filter(function(p) { return p.mk; });
+  pts.sort(function(a, b) {
+    var ra = a.mapRank == null ? 1e9 : a.mapRank, rb = b.mapRank == null ? 1e9 : b.mapRank;
+    return ra - rb || PLACES.indexOf(a) - PLACES.indexOf(b);
+  });
+  var placed = [];
+  pts.forEach(function(p) {
+    var o = MAPS.map.latLngToLayerPoint(p.mk.getLatLng()), f = mapFootprint(p);
+    var R = { x0: o.x + f.x0, x1: o.x + f.x1, y0: o.y + f.y0, y1: o.y + f.y1 };
+    var hit = placed.some(function(q) { return R.x0 < q.x1 && R.x1 > q.x0 && R.y0 < q.y1 && R.y1 > q.y0; });
+    if (!hit) placed.push(R);
+    p.mkMode = !hit ? 'full' : p.mapRank != null ? 'badge' : 'dot';
+    p.mk.setZIndexOffset((p.mkMode === 'full' ? 2000 : 0) + (p.mapRank != null ? 1000 - p.mapRank : 0));
+    mapUpdatePlace(p);
+  });
+}
+
+// Hovering a collapsed marker shows its full marker on top; a non-interactive marker keeps the hover stable
+function mapHoverOn(p) {
+  mapHoverOff();
+  if (!mapActive() || !p.mk || p.mkMode === 'full') return;
+  MAPS.ghost = L.marker(p.mk.getLatLng(), { icon: mapMakeIcon(mapIconHtml(p, 'full', pal())), interactive: false, keyboard: false, zIndexOffset: 10000 });
+  MAPS.ghost.addTo(MAPS.map);
+}
+function mapHoverOff() {
+  if (MAPS.ghost && MAPS.map) MAPS.map.removeLayer(MAPS.ghost);
+  MAPS.ghost = null;
 }
 
 function mapMakeIcon(html) {
@@ -3317,15 +3404,19 @@ function mapSync() {
     if (!p.mk) {
       p.mkHtml = html;
       p.mk = L.marker([p.lat, p.lon], { icon: mapMakeIcon(html), title: p.label, keyboard: false });
+      p.mk.on('mouseover', function() { mapHoverOn(p); });
+      p.mk.on('mouseout', mapHoverOff);
       p.mk.addTo(MAPS.layer);
     } else if (html !== p.mkHtml) {
       p.mkHtml = html;
       p.mk.setIcon(mapMakeIcon(html));
     }
   });
+  mapHoverOff();
   mapMessage(!PLACES.length ? 'No places yet. Add a zip code, place name, or lat, lon above.'
     : !vis ? 'No places have the selected activity tags.' : null);
   if (MAPS.fitPending) { MAPS.fitPending = false; mapFit(); }
+  mapCollapse();
 }
 
 // Fit now if Map is showing; otherwise the next entry fits (setView sets the flag)
