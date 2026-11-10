@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avalanche Rose Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#58a6ff;--muted:#8b949e;--text:#e6edf3;--warn:#d29922;--btn-on-text:#000}
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f6f8fa;--surface:#ffffff;--border:#d0d7de;--accent:#0969da;--muted:#636c76;--text:#1f2328;--warn:#9a6700;--btn-on-text:#fff}
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+  header{padding:8px 12px;border-bottom:1px solid var(--border);flex:0 0 auto}
+  header h1{font-size:18px;font-weight:600;letter-spacing:-.3px}
+  .disc{color:var(--warn);font-size:11px;margin-top:2px}
+  .sub{color:var(--muted);font-size:11px;margin-top:2px}
+  .sub a{color:var(--accent)}
+  #map{flex:1 1 auto;min-height:0;background:var(--bg)}
+  .leaflet-control-layers,.leaflet-bar a,.leaflet-control-attribution{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}
+  .leaflet-control-attribution a{color:var(--accent)!important}
+  .modebar{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+  .modebar button{background:var(--surface);color:var(--text);border:0;padding:6px 10px;font:11px system-ui,sans-serif;cursor:pointer}
+  .modebar button+button{border-left:1px solid var(--border)}
+  .opacitybar{display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font:11px system-ui,sans-serif}
+  .opacitybar input{width:110px;accent-color:var(--accent);margin:0}
+  .opacitybar output{min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums}
+  .modebar button[aria-pressed=true]{background:var(--accent);color:var(--btn-on-text);font-weight:700}
+  #rose{position:absolute;left:10px;bottom:28px;z-index:1000;width:210px;padding:8px;background:var(--surface);color:var(--text);
+    border:1px solid var(--border);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:11px}
+  #rose .ttl{font-weight:600}
+  #rose .dt{color:var(--muted);margin-bottom:2px}
+  #rose svg{display:block;width:100%;height:auto}
+  #rose .cell{stroke:var(--muted);stroke-width:.6}
+  #rose .cell.hl{stroke:var(--text);stroke-width:3}
+  #rose text{fill:var(--text);font-size:11px;font-family:system-ui,sans-serif}
+  #readout{min-height:2.6em;margin-top:2px;font-variant-numeric:tabular-nums;font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:2px 8px;margin-top:4px;color:var(--muted)}
+  .legend i{display:inline-block;width:10px;height:10px;border:1px solid var(--muted);vertical-align:-1px;margin-right:3px}
+  #notice{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--surface);color:var(--warn);
+    border:1px solid var(--warn);border-radius:6px;padding:4px 8px;font-size:11px;max-width:70%}
+  #notice[hidden]{display:none}
+  @media (max-width:520px){
+    #rose{width:150px;padding:6px;bottom:24px}
+    .legend{display:none}
+    #readout{font-size:10px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Avalanche Rose Map</h1>
+  <div class="disc">Prototype using an archived forecast (Salt Lake, 2025-02-11). Not for travel decisions.</div>
+</header>
+<div id="map"></div>
+<div id="notice" hidden></div>
+<div id="rose">
+  <div class="ttl">Salt Lake &middot; overall danger</div>
+  <div class="dt" id="roseDate"></div>
+  <svg id="roseSvg" viewBox="-110 -110 220 220" role="img" aria-label="Avalanche danger rose"></svg>
+  <div id="readout">Hover the map</div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<script>
+'use strict';
+
+/* ================= Forecast data (hardcoded; replace with live source later) =================
+ * Source: Utah Avalanche Center, Salt Lake zone, 2025-02-11
+ *   https://utahavalanchecenter.org/forecast/salt-lake/2/11/2025
+ * Encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
+ * Each band ordered N, NE, E, SE, S, SW, W, NW.
+ * Values: 0 = no rating, 2 = Low, 4 = Moderate, 6 = Considerable, 8 = High, 10 = Extreme.
+ * NOTE: odd values mean "pockets of" the next-lower level; NOT handled yet -
+ * they are treated as rounding down (v - v%2).
+ */
+const FORECAST = {
+  zone: 'Salt Lake',
+  date: '2025-02-11',
+  url: 'https://utahavalanchecenter.org/forecast/salt-lake/2/11/2025',
+  rose: [6,6,6,4,4,4,4,6,  6,6,6,4,2,2,4,6,  4,4,4,2,2,2,2,4]
+};
+
+/* ================= Constants ================= */
+const FT_PER_M = 3.28084;
+const LOW_MAX_M = 2438.4;   // 8,000 ft: below = low band
+const MID_MAX_M = 2895.6;   // 9,500 ft: up to and including = mid band; above = upper
+const BAND_OFFSET = {upper: 0, mid: 8, low: 16};
+const ASPECTS = ['N','NE','E','SE','S','SW','W','NW'];
+// Every level paints at full per-pixel alpha; overall opacity comes from the
+// Danger opacity slider (layer opacity), so Low is as visible as the rest.
+const LEVELS = {   // by even level value
+  2:  {name: 'Low',          rgb: [0x50,0xB8,0x48], alpha: 1},
+  4:  {name: 'Moderate',     rgb: [0xFF,0xF2,0x00], alpha: 1},
+  6:  {name: 'Considerable', rgb: [0xF7,0x94,0x1E], alpha: 1},
+  8:  {name: 'High',         rgb: [0xED,0x1C,0x24], alpha: 1},
+  10: {name: 'Extreme',      rgb: [0x23,0x1F,0x20], alpha: 1}
+};
+const SLOPE_RAMP_LO = 25, SLOPE_RAMP_HI = 35, FLAT_DEG = 5;
+const EARTH_CIRC = 40075016.686;
+const DEM_MAX_Z = 15;
+const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+const ZONE_URL = 'https://api.avalanche.org/v2/public/products/map-layer/UAC';
+const ZONE_NAME = 'Salt Lake';
+const DEM_CACHE_MAX = 300;
+
+function levelOf(v) { return v - (v % 2); }   // odd ("pockets of") rounds down
+
+/* ================= Map + basemaps ================= */
+const map = L.map('map', {center: [40.60, -111.65], zoom: 12, minZoom: 9, maxZoom: 17});
+
+const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+  maxZoom: 17, zIndex: 1,
+  attribution: 'Map data: &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+});
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, zIndex: 1,
+  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
+const cyclo = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+  maxZoom: 17, zIndex: 1,
+  attribution: '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases" title="CyclOSM">CyclOSM</a> | Map data &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
+map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen) | Forecast: <a href="' + FORECAST.url + '">Utah Avalanche Center</a>');
+
+/* ================= DEM loading + derived terrain ================= */
+const demCache = new Map();   // key -> {promise, data}
+
+function demKey(z, x, y) { return z + '/' + x + '/' + y; }
+
+/** Latitude (deg) of fractional world-pixel row wy at zoom z. */
+function latOfWorldY(wy, z) {
+  const n = Math.PI - 2 * Math.PI * wy / (256 * Math.pow(2, z));
+  return Math.atan(Math.sinh(n)) * 180 / Math.PI;
+}
+
+/*
+ * Aspect sign convention (the important part):
+ *  Image rows grow SOUTHWARD, columns grow EASTWARD.
+ *  dzdx = d(elev)/d(east)  (+ when ground rises to the east)
+ *  dzdy = d(elev)/d(row)   (+ when ground rises to the south, i.e. drops to the north)
+ *  Downhill vector (what the slope "faces") = -gradient:
+ *    east component  = -dzdx
+ *    north component = -(d elev/d north) = -(-dzdy) = +dzdy
+ *  bearing = atan2(east, north), clockwise from N.
+ *  Check: ground drops to the north -> dzdy>0, dzdx=0 -> atan2(0,+)=0 deg = N.
+ *  Check: ground drops to the east  -> dzdx<0 -> atan2(+,0)=90 deg = E.
+ */
+function decodeDem(img, z, ty) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, 256, 256).data;
+  const W = 258;
+  const pad = new Float32Array(W * W);
+  for (let r = 0; r < 256; r++) {
+    for (let c = 0; c < 256; c++) {
+      const i = (r * 256 + c) * 4;
+      pad[(r + 1) * W + c + 1] = px[i] * 256 + px[i + 1] + px[i + 2] / 256 - 32768;
+    }
+  }
+  // clamp edges (replicate) - may leave a faint 1px seam in slope between tiles
+  for (let c = 0; c < 256; c++) { pad[c + 1] = pad[W + c + 1]; pad[257 * W + c + 1] = pad[256 * W + c + 1]; }
+  for (let r = 0; r < 258; r++) { pad[r * W] = pad[r * W + 1]; pad[r * W + 257] = pad[r * W + 256]; }
+
+  const elev = new Float32Array(256 * 256);
+  const slope2 = new Uint8Array(256 * 256);   // slope in half-degrees
+  const aspect = new Uint8Array(256 * 256);   // sector 0..7
+  const hill = new Uint8Array(256 * 256);     // hillshade 0..255 (neutral/flat = 255)
+  const sunAz = 315 * Math.PI / 180, zen = 45 * Math.PI / 180;
+  const cosZ = Math.cos(zen), sinZ = Math.sin(zen);
+  const metersPerPx0 = EARTH_CIRC / (256 * Math.pow(2, z));
+  for (let r = 0; r < 256; r++) {
+    const lat = latOfWorldY(ty * 256 + r + 0.5, z);
+    const cell = metersPerPx0 * Math.cos(lat * Math.PI / 180);   // same in x and y (Mercator)
+    for (let c = 0; c < 256; c++) {
+      const p = (r + 1) * W + c + 1;
+      const a = pad[p - W - 1], b = pad[p - W], cc = pad[p - W + 1];
+      const d = pad[p - 1], e = pad[p], f = pad[p + 1];
+      const g = pad[p + W - 1], h = pad[p + W], i = pad[p + W + 1];
+      const dzdx = ((cc + 2 * f + i) - (a + 2 * d + g)) / (8 * cell);
+      const dzdy = ((g + 2 * h + i) - (a + 2 * b + cc)) / (8 * cell);
+      const n = r * 256 + c;
+      elev[n] = e;
+      const slopeRad = Math.atan(Math.hypot(dzdx, dzdy));
+      slope2[n] = Math.min(255, Math.round(slopeRad * 180 / Math.PI * 2));
+      let brg = Math.atan2(-dzdx, dzdy) * 180 / Math.PI;     // see convention note
+      if (brg < 0) brg += 360;
+      aspect[n] = Math.floor(((brg + 22.5) % 360) / 45);
+      const aspRad = brg * Math.PI / 180;
+      const shade = cosZ * Math.cos(slopeRad) + sinZ * Math.sin(slopeRad) * Math.cos(sunAz - aspRad);
+      const v = Math.max(0, Math.min(1, shade / cosZ));      // flat = 1, only darkens
+      hill[n] = Math.round(255 * (0.35 + 0.65 * v));
+    }
+  }
+  return {elev, slope2, aspect, hill};
+}
+
+function loadDem(z, x, y) {
+  const key = demKey(z, x, y);
+  const hit = demCache.get(key);
+  if (hit) return hit.promise;
+  const entry = {data: null, promise: null};
+  entry.promise = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try { entry.data = decodeDem(img, z, y); resolve(entry.data); }
+      catch (err) { reject(err); }
+    };
+    img.onerror = () => reject(new Error('DEM tile failed: ' + key));
+    img.src = DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  }).catch(err => { demCache.delete(key); throw err; });
+  demCache.set(key, entry);
+  if (demCache.size > DEM_CACHE_MAX) demCache.delete(demCache.keys().next().value);
+  return entry.promise;
+}
+
+/* ================= Zone polygon ================= */
+let zone = null;   // {polys: [[ring,...],...] in [lng,lat], bbox: L.LatLngBounds} or null
+let mode = 'slope';
+
+function zonePolys(geom) {
+  if (geom.type === 'Polygon') return [geom.coordinates];
+  if (geom.type === 'MultiPolygon') return geom.coordinates;
+  throw new Error('Unexpected geometry ' + geom.type);
+}
+
+function pointInZone(lat, lng) {
+  if (!zone) return true;
+  let inside = false;   // even-odd across every ring handles holes + multipolygons
+  for (const poly of zone.polys) {
+    for (const ring of poly) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        if ((yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+      }
+    }
+  }
+  return inside;
+}
+
+const zoneReady = fetch(ZONE_URL)
+  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  .then(fc => {
+    const feat = (fc.features || []).find(f => f.properties && f.properties.name === ZONE_NAME);
+    if (!feat) throw new Error('zone "' + ZONE_NAME + '" not found');
+    const polys = zonePolys(feat.geometry);
+    const b = L.latLngBounds([]);
+    polys.forEach(p => p[0].forEach(c => b.extend([c[1], c[0]])));
+    zone = {polys, bbox: b};
+    L.geoJSON(feat, {style: {fill: false, color: '#58a6ff', weight: 2.5, opacity: 0.9}, interactive: false}).addTo(map);
+  })
+  .catch(err => {
+    console.warn('Zone polygon unavailable:', err);
+    const n = document.getElementById('notice');
+    n.textContent = 'Zone outline unavailable (' + err.message + '); overlay shown unclipped.';
+    n.hidden = false;
+  });
+
+/* ================= Overlay painting ================= */
+// LUT: index 0..23 -> [r,g,b,baseAlpha] or null
+const LUT = FORECAST.rose.map(v => {
+  const lv = LEVELS[levelOf(v)];
+  return lv ? [lv.rgb[0], lv.rgb[1], lv.rgb[2], lv.alpha] : null;
+});
+
+function bandOffset(elevM) {
+  if (elevM < LOW_MAX_M) return BAND_OFFSET.low;
+  if (elevM <= MID_MAX_M) return BAND_OFFSET.mid;
+  return BAND_OFFSET.upper;
+}
+
+function slopeRamp(deg) {
+  const t = (deg - SLOPE_RAMP_LO) / (SLOPE_RAMP_HI - SLOPE_RAMP_LO);
+  return t <= 0 ? 0 : (t >= 1 ? 1 : t);
+}
+
+function tileMask(canvas, coords) {
+  if (canvas._mask) return canvas._mask;
+  const m = document.createElement('canvas');
+  m.width = m.height = 256;
+  const ctx = m.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  const ox = coords.x * 256, oy = coords.y * 256;
+  for (const poly of zone.polys) {
+    for (const ring of poly) {
+      ring.forEach((c, k) => {
+        const p = map.project(L.latLng(c[1], c[0]), coords.z);
+        if (k === 0) ctx.moveTo(p.x - ox, p.y - oy); else ctx.lineTo(p.x - ox, p.y - oy);
+      });
+      ctx.closePath();
+    }
+  }
+  ctx.fill('evenodd');
+  canvas._mask = m;
+  return m;
+}
+
+function paintOverlay(canvas, coords, dem) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(256, 256);
+  const out = img.data;
+  for (let n = 0; n < 65536; n++) {
+    const slope = dem.slope2[n] / 2;
+    let a;
+    if (mode === 'slope') a = slopeRamp(slope);
+    else a = slope < FLAT_DEG ? 0 : 1;
+    if (a === 0) continue;
+    const ent = LUT[bandOffset(dem.elev[n]) + dem.aspect[n]];
+    if (!ent) continue;
+    const o = n * 4;
+    out[o] = ent[0]; out[o + 1] = ent[1]; out[o + 2] = ent[2];
+    out[o + 3] = Math.round(255 * ent[3] * a);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.putImageData(img, 0, 0);
+  if (zone) {
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(tileMask(canvas, coords), 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+const DangerLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    canvas._coords = coords;
+    if (zone) {   // skip fetching terrain for tiles wholly outside the zone's bounding box
+      const nw = map.unproject(L.point(coords.x * 256, coords.y * 256), coords.z);
+      const se = map.unproject(L.point((coords.x + 1) * 256, (coords.y + 1) * 256), coords.z);
+      if (!zone.bbox.intersects(L.latLngBounds(se, nw))) { setTimeout(() => done(null, canvas), 0); return canvas; }
+    }
+    loadDem(coords.z, coords.x, coords.y)
+      .then(dem => { paintOverlay(canvas, coords, dem); canvas._painted = true; done(null, canvas); })
+      .catch(err => { console.warn(err); done(err, canvas); });
+    return canvas;
+  },
+  repaint() {
+    for (const k in this._tiles) {
+      const cv = this._tiles[k].el;
+      if (!cv || !cv._painted) continue;
+      const e = demCache.get(demKey(cv._coords.z, cv._coords.x, cv._coords.y));
+      if (e && e.data) paintOverlay(cv, cv._coords, e.data);
+    }
+  }
+});
+
+const HillLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    loadDem(coords.z, coords.x, coords.y).then(dem => {
+      const ctx = canvas.getContext('2d');
+      const img = ctx.createImageData(256, 256);
+      for (let n = 0; n < 65536; n++) {
+        const g = dem.hill[n], o = n * 4;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = g; img.data[o + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      done(null, canvas);
+    }).catch(err => { console.warn(err); done(err, canvas); });
+    return canvas;
+  }
+});
+
+// Own hillshade computed from the same Terrarium DEM, multiply-blended (CSS) over OSM Standard.
+const hill = new HillLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 2, opacity: 0.8});
+hill.on('add', () => { hill.getContainer().style.mixBlendMode = 'multiply'; });
+const osmHill = L.layerGroup([osm, hill]).addTo(map);   // default basemap
+
+const DEFAULT_OPACITY = 50;   // percent; 100 = fully opaque over the basemap
+const danger = new DangerLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 5, opacity: DEFAULT_OPACITY / 100});
+zoneReady.then(() => danger.addTo(map));   // wait so tiles can be clipped from the first paint
+
+L.control.layers({
+  'OpenTopoMap': topo,
+  'OSM Standard + hillshade': osmHill,
+  'CyclOSM': cyclo
+}, {'Danger overlay': danger}, {collapsed: true}).addTo(map);
+
+/* ================= Mode toggle ================= */
+const ModeControl = L.Control.extend({
+  options: {position: 'topleft'},
+  onAdd() {
+    const div = L.DomUtil.create('div', 'modebar');
+    const defs = [['slope', 'Slope-weighted'], ['all', 'All terrain']];
+    const btns = defs.map(([id, label]) => {
+      const b = L.DomUtil.create('button', '', div);
+      b.type = 'button'; b.textContent = label;
+      b.setAttribute('aria-pressed', String(id === mode));
+      b.addEventListener('click', () => {
+        mode = id;
+        btns.forEach((x, i) => x.setAttribute('aria-pressed', String(defs[i][0] === mode)));
+        danger.repaint();
+      });
+      return b;
+    });
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  }
+});
+new ModeControl().addTo(map);
+
+/* ================= Danger opacity slider ================= */
+const OpacityControl = L.Control.extend({
+  options: {position: 'topleft'},
+  onAdd() {
+    const div = L.DomUtil.create('div', 'opacitybar');
+    div.innerHTML = '<label for="dangerOpacity">Danger opacity</label>' +
+      '<input id="dangerOpacity" type="range" min="0" max="100" step="5" value="' + DEFAULT_OPACITY + '">' +
+      '<output for="dangerOpacity">' + DEFAULT_OPACITY + '%</output>';
+    const input = div.querySelector('input'), out = div.querySelector('output');
+    input.addEventListener('input', () => {
+      danger.setOpacity(input.value / 100);
+      out.textContent = input.value + '%';
+    });
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  }
+});
+new OpacityControl().addTo(map);
+
+/* ================= Rose panel ================= */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const RINGS = {upper: [14, 40], mid: [42, 66], low: [68, 92]};   // inner/outer radii
+
+function polar(r, deg) {
+  const t = deg * Math.PI / 180;
+  return [r * Math.sin(t), -r * Math.cos(t)];   // N up, clockwise
+}
+function wedgePath(r0, r1, a0, a1) {
+  const p = (r, a) => polar(r, a).map(v => v.toFixed(2)).join(' ');
+  return 'M' + p(r1, a0) + ' A' + r1 + ' ' + r1 + ' 0 0 1 ' + p(r1, a1) +
+         ' L' + p(r0, a1) + ' A' + r0 + ' ' + r0 + ' 0 0 0 ' + p(r0, a0) + ' Z';
+}
+
+const roseCells = [];   // index 0..23, same as forecast array
+(function buildRose() {
+  const svg = document.getElementById('roseSvg');
+  document.getElementById('roseDate').textContent = FORECAST.date + ' (archived)';
+  for (const band of ['upper', 'mid', 'low']) {
+    for (let k = 0; k < 8; k++) {
+      const idx = BAND_OFFSET[band] + k;
+      const path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('d', wedgePath(RINGS[band][0], RINGS[band][1], k * 45 - 22.5, k * 45 + 22.5));
+      path.setAttribute('class', 'cell');
+      const lv = LEVELS[levelOf(FORECAST.rose[idx])];
+      path.setAttribute('fill', lv ? 'rgb(' + lv.rgb.join(',') + ')' : 'none');
+      const t = document.createElementNS(SVGNS, 'title');
+      t.textContent = ASPECTS[k] + ' ' + band + ': ' + (lv ? lv.name : 'No rating');
+      path.appendChild(t);
+      svg.appendChild(path);
+      roseCells[idx] = path;
+    }
+  }
+  [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([s, a]) => {
+    const tx = document.createElementNS(SVGNS, 'text');
+    const [x, y] = polar(102, a);
+    tx.setAttribute('x', x); tx.setAttribute('y', y);
+    tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('dominant-baseline', 'central');
+    tx.textContent = s;
+    svg.appendChild(tx);
+  });
+  const lg = document.getElementById('legend');
+  Object.keys(LEVELS).forEach(k => {
+    const s = document.createElement('span');
+    s.innerHTML = '<i style="background:rgb(' + LEVELS[k].rgb.join(',') + ')"></i>' + LEVELS[k].name;
+    lg.appendChild(s);
+  });
+  const ring = document.createElement('span');
+  ring.textContent = 'Rings: inner upper (>9,500 ft), middle mid, outer low (<8,000 ft)';
+  ring.style.flexBasis = '100%';
+  lg.appendChild(ring);
+})();
+
+let hlIdx = -1;
+function highlight(idx) {
+  if (idx === hlIdx) return;
+  if (hlIdx >= 0) roseCells[hlIdx].classList.remove('hl');
+  hlIdx = idx;
+  if (idx >= 0) {
+    const c = roseCells[idx];
+    c.classList.add('hl');
+    c.parentNode.appendChild(c);   // bring to front so the outline isn't covered
+  }
+}
+
+/* ================= Hover lookup ================= */
+const readout = document.getElementById('readout');
+function setReadout(txt, idx) { readout.textContent = txt; highlight(idx === undefined ? -1 : idx); }
+
+function lookup(latlng) {
+  if (!map.hasLayer(danger)) { setReadout('Danger overlay is off'); return; }
+  if (!pointInZone(latlng.lat, latlng.lng)) { setReadout('Outside the Salt Lake zone'); return; }
+  const z = Math.min(map.getZoom(), DEM_MAX_Z);
+  const wp = map.project(latlng, z);
+  const tx = Math.floor(wp.x / 256), ty = Math.floor(wp.y / 256);
+  const e = demCache.get(demKey(z, tx, ty));
+  if (!e || !e.data) { setReadout('Loading terrain...'); return; }
+  const c = Math.min(255, Math.floor(wp.x - tx * 256)), r = Math.min(255, Math.floor(wp.y - ty * 256));
+  const n = r * 256 + c;
+  const elevM = e.data.elev[n], slope = e.data.slope2[n] / 2, asp = e.data.aspect[n];
+  const ft = Math.round(elevM * FT_PER_M).toLocaleString('en-US');
+  if (slope < FLAT_DEG) { setReadout('Flat ground (<' + FLAT_DEG + '°) · ' + ft + ' ft · aspect not meaningful'); return; }
+  const idx = bandOffset(elevM) + asp;
+  const lv = LEVELS[levelOf(FORECAST.rose[idx])];
+  let txt = ASPECTS[asp] + ' · ' + ft + ' ft · ' + Math.round(slope) + '° · ' + (lv ? lv.name : 'No rating');
+  if (mode === 'slope' && slope < SLOPE_RAMP_LO) txt += ' (not shaded: <' + SLOPE_RAMP_LO + '°)';
+  setReadout(txt, idx);
+}
+
+let pending = null, raf = 0;
+function schedule(ll) {
+  pending = ll;
+  if (raf) return;
+  raf = requestAnimationFrame(() => { raf = 0; if (pending) lookup(pending); });
+}
+map.on('mousemove', e => schedule(e.latlng));
+map.on('click', e => schedule(e.latlng));   // phones: tap to query
+map.on('mouseout', () => { pending = null; setReadout('Hover the map'); });
+map.on('zoomend', () => { pending = null; });
+L.DomEvent.disableClickPropagation(document.getElementById('rose'));
+L.DomEvent.disableScrollPropagation(document.getElementById('rose'));
+</script>
+</body>
+</html>
