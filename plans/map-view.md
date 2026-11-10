@@ -14,7 +14,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 | 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Done |
 | 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Done |
 | 6 | Review and QA | ux-reviewer, qa-validator, implementer | Review usability, check edge cases on phone and in dark mode, and fix what they find. | Done |
-| 7 | Docs and ship | doc-writer | Write the README and in-page notes, update CONTEXT.md, and merge to main. Deploying waits for your OK. | Not started |
+| 7 | Docs and ship | doc-writer | Write the README and in-page notes, update CONTEXT.md, and merge to main. Deploying waits for your OK. | Done (docs); merge and deploy await OK |
 
 Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
 
@@ -340,3 +340,4 @@ _Each batch adds anything the next ones need to know here: deviations, open issu
   - Fixed: map height after the day picker fills (M1), Retry feedback in the popup (M2), failed refresh with old data now shows an error and Retry via a shared `placeFailed` (M3), no-Leaflet strip and help text (M4), `mapDrop` only closes its own popup (M5), double-add guard, 40 px tap targets on touch/phone, single-row scrolling day strip on phones, badge contrast in dark mode, larger hit areas on dots and badges, error ring on non-climb markers, dark-mode Leaflet controls, tile-failure message, long-press cancel on drag and vibrate, add-place hint text, autoPan on map adds, `.mkn` max width.
   - **Open items resolved afterwards (with your OK):** on phones (≤600 px) `mapEnter` scrolls the day picker to the top of the screen so the map is in view; a place added by search or location while Map shows is exempt from the filter like a map add (`mapAddedFromForm`); markers are keyboard-focusable (`keyboard:true`).
   - Not exercised: real touch and iOS Safari, the tile-failure message, the red error ring on non-climb markers, the day strip scroll-into-view with an overflowing strip, autoPan near the bottom edge.
+- **Batch 7:** Docs are in: README entry, `noteMap` in-page note (shown by `syncNotes`; the shared note now says "Graphic and Table views"), and CONTEXT.md terms "Pill arch" and "Collapse". Not merged to `main` and not deployed; both wait for the user's OK.

@@ -414,8 +414,15 @@
   prevailing direction (amber above 15&nbsp;mph / 25&nbsp;km/h, red above 25&nbsp;mph / 40&nbsp;km/h), new snow depth and the mean freezing level in daylight. Places tagged Climb add three pills (morning, midday, afternoon) colored by the
   Climbing Index, and a Climb column with the mean index of the ranked days.
 </div>
+<div class="note" id="noteMap">
+  Map view: the day buttons above the map set the day shared with the other views (shift-click a second day, or use Span, for a range).
+  Rank numbers are across all places and ignore grouping. Places tagged Climb show an arch of three pills (morning, midday, afternoon)
+  around the rank; each pill is the mean of that third over the selected span. Grey pills mean loading or no data, and &ldquo;!&rdquo; means the load
+  failed (use Retry in the popup). Overlapping places collapse to small rank badges; hover one to see the full marker. Click a place for its
+  popup with tag chips and Open forecast. Right-click, or long-press on a phone, to add a place there; it stays shown until you tag it.
+</div>
 <div class="note">
-  Both views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
+  Graphic and Table views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
   total precipitation and snow, the highest wind or high, and the mean daylight cloud cover (Sunniest / Cloudiest). Clicking a row opens its full meteogram.
   Grouping files a place under its first activity tag. The meteogram&rsquo;s precipitation panel also draws the rolling 24-hour total (liquid-water equivalent, trailing 24&nbsp;h ending at each point,
   computed from hourly data) on its own scale, labeled in the leftmost axis column. The precipitation bar and 24-hour scales are shared by every place (in the strips too), so a wetter place looks wetter. Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
@@ -3823,6 +3830,7 @@ function computeSpph() {
 function syncNotes() {
   document.getElementById('noteGfx').hidden = VIEW !== 'graphic';
   document.getElementById('noteTbl').hidden = VIEW !== 'table';
+  document.getElementById('noteMap').hidden = VIEW !== 'map';
 }
 
 function computePph() {
