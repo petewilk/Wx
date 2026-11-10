@@ -13,7 +13,7 @@ Batch 2 settled the design on 2026-11-10. The live data source is parked until t
 | 3 | UAC link and remembered settings | implementer, ux-reviewer | "Archived forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Done |
 | 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Done |
 | 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Done |
-| 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Not started |
+| 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Done |
 | 7 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, README section, in-page note, CONTEXT.md terms, then merge. Deploy unlinked only with the user's OK. | Not started |
 | — | Live data pipeline | architect, implementer, qa-validator | UAC token + DreamHost cron job writing the same files for all 9 UAC zones. | Blocked: user reading UAC Data Access Policy |
 
@@ -219,9 +219,8 @@ Only what the user put off on 2026-11-10.
 ## Known limitations of the prototype
 
 - **Blocky above zoom 15:** that's the terrain data's native limit.
-- **Tile seams:** a faint 1-pixel line can show at tile edges, because the edge pixels are copied rather than read from neighbouring tiles. The fix is to fetch the 8 neighbouring tiles.
 - **Band edges:** elevation is stored as Float32, so the exact band boundaries can be off by up to about 0.004 m. This can't happen with real Terrarium values.
-- **Zone lookup:** the zone is found by the name "Salt Lake" only, with no fallback to id 1738. Fixed in batch 6, as are tile seams.
+- **Hatch width above zoom 15:** the z15 overlay is upscaled, so stripes are 2× wider at z16 and 4× at z17.
 
 ## Batch notes
 
@@ -251,3 +250,9 @@ Only what the user put off on 2026-11-10.
   - `initForecast` skips its default `loadDay` if the user picked a date while the index was still loading (found by the qa-validator).
   - After the ux-reviewer's review: the phone panel is 168px wide with 36px-tall controls, disabled buttons show a reason in `title`, and `color-scheme` is set on `:root`.
   - Checked in the browser (Chromium): default newest day, stepping across the 2025-02-12 gap, the gap day picked in the input, rapid prev clicks, `?date=bad&x=1#h` (becomes `?x=1#h`), a pick while the index loads, and the phone layout. Not checked on a real iOS Safari or Android device.
+- **Batch 6:**
+  - Pockets: `cellLevels(v)` gives `{base, stripe}` and `levelText(v)` the readout text ("Pockets of Moderate"). Odd LUT entries have 8 elements (base rgba + stripe rgba); v=1 has a transparent base. Map stripes follow world pixels (`wx+wy`, `HATCH_PERIOD` 12 px, 1-px antialias ramp), so they line up across tiles. The rose uses SVG patterns `#pk-1`…`#pk-9`. The legend has a "Pockets of next level" swatch.
+  - Seams: `loadRaw` (raw elevation cache, 300 tiles) feeds `loadDem`, which waits on the 3×3 block with `Promise.allSettled`; `buildPad` fills the border from neighbours and replicates edges where one is missing; `deriveTerrain` is the pure Horn step. x wraps, off-world y is treated as missing.
+  - Zone: matched by name, then by top-level feature id 1738 (`ZONE.id`).
+  - The qa-validator extracted the shipped functions into Node: 0 of 65,536 pixels differ from a continuous Horn reference on planar and curved surfaces (the old copy-edge code differed on ~1,000 border pixels); stripes are phase-continuous across a 3×3 tile render with a 50% duty cycle. Only v=3 appears in sample data; v=1, 5, 7, 9 are unit-checked only.
+  - Checked in the browser on 2024-12-24: hatched upper W–N–E in the rose and on the map, readout "Pockets of Moderate", stripes continuous with no seam lines at z15 and z17, no console errors.

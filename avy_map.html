@@ -97,11 +97,11 @@
  * Rose encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
  * Each band ordered N, NE, E, SE, S, SW, W, NW.
  * Values: 0 = no rating, 2 = Low, 4 = Moderate, 6 = Considerable, 8 = High, 10 = Extreme.
- * NOTE: odd values mean "pockets of" the next-lower level; NOT handled yet -
- * they are treated as rounding down (v - v%2).
+ * Odd values mean "pockets of" level v+1 over base level v-1 (1 = pockets of Low over no rating).
+ * They are drawn as diagonal stripes: base color = level v-1, stripes = level v+1.
  * Pages must be served over http(s); fetch() of the JSON files does not work from file://.
  */
-const ZONE = {center: 'uac', slug: 'salt-lake', name: 'Salt Lake'};
+const ZONE = {center: 'uac', slug: 'salt-lake', name: 'Salt Lake', id: 1738};   // id: top-level feature id in the map-layer API (fallback match)
 const DATA_DIR = 'data/avy/' + ZONE.center + '/' + ZONE.slug + '/';
 const INDEX_URL = DATA_DIR + 'index.json';
 function dayUrl(date) { return DATA_DIR + date + '.json'; }
@@ -128,6 +128,9 @@ const DEM_MAX_Z = 15;
 const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const ZONE_URL = 'https://api.avalanche.org/v2/public/products/map-layer/UAC';
 const DEM_CACHE_MAX = 300;
+const RAW_CACHE_MAX = DEM_CACHE_MAX;   // raw tiles only feed neighbours of tiles being derived; ~256 KB each
+const HATCH_PERIOD = 12;                   // px along x (or y) between stripe starts; stripe = half
+const SVG_HATCH = 6;                       // rose pattern tile size, SVG units
 
 /** UAC forecast page for a zone slug + ISO date (YYYY-MM-DD); no leading zeros. Split, not Date(), to avoid TZ shifts. */
 function uacForecastUrl(slug, isoDate) {
@@ -161,7 +164,17 @@ function restoredOpacity() {
   return (n > 0 && n <= 100 && n % 5 === 0) ? n : DEFAULTS.opacity;
 }
 
-function levelOf(v) { return v - (v % 2); }   // odd ("pockets of") rounds down
+/** Base and stripe LEVELS entries for a rose value; odd = pockets of v+1 over v-1. Either may be undefined. */
+function cellLevels(v) {
+  if (v % 2 === 0) return {base: LEVELS[v], stripe: undefined};
+  return {base: LEVELS[v - 1], stripe: LEVELS[v + 1]};
+}
+/** Human text for a rose value, e.g. "Moderate", "Pockets of Moderate", "No rating". */
+function levelText(v) {
+  const lv = cellLevels(v);
+  if (lv.stripe) return 'Pockets of ' + lv.stripe.name;
+  return lv.base ? lv.base.name : 'No rating';
+}
 
 /* ================= Map + basemaps ================= */
 const map = L.map('map', {center: [40.60, -111.65], zoom: 12, minZoom: 9, maxZoom: 17});
@@ -199,6 +212,43 @@ function latOfWorldY(wy, z) {
   return Math.atan(Math.sinh(n)) * 180 / Math.PI;
 }
 
+const rawCache = new Map();   // key -> {promise, data}; data = Float32Array(65536) of elevations (m)
+
+/** Decode a Terrarium image to metres: R*256 + G + B/256 - 32768. */
+function decodeRaw(img) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, 256, 256).data;
+  const raw = new Float32Array(65536);
+  for (let n = 0; n < 65536; n++) {
+    const i = n * 4;
+    raw[n] = px[i] * 256 + px[i + 1] + px[i + 2] / 256 - 32768;
+  }
+  return raw;
+}
+
+function loadRaw(z, x, y) {
+  const key = demKey(z, x, y);
+  const hit = rawCache.get(key);
+  if (hit) return hit.promise;
+  const entry = {data: null, promise: null};
+  entry.promise = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try { entry.data = decodeRaw(img); resolve(entry.data); }
+      catch (err) { reject(err); }
+    };
+    img.onerror = () => reject(new Error('DEM tile failed: ' + key));
+    img.src = DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  }).catch(err => { rawCache.delete(key); throw err; });
+  rawCache.set(key, entry);
+  if (rawCache.size > RAW_CACHE_MAX) rawCache.delete(rawCache.keys().next().value);
+  return entry.promise;
+}
+
 /*
  * Aspect sign convention (the important part):
  *  Image rows grow SOUTHWARD, columns grow EASTWARD.
@@ -211,24 +261,9 @@ function latOfWorldY(wy, z) {
  *  Check: ground drops to the north -> dzdy>0, dzdx=0 -> atan2(0,+)=0 deg = N.
  *  Check: ground drops to the east  -> dzdx<0 -> atan2(+,0)=90 deg = E.
  */
-function decodeDem(img, z, ty) {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
-  const ctx = cv.getContext('2d', {willReadFrequently: true});
-  ctx.drawImage(img, 0, 0);
-  const px = ctx.getImageData(0, 0, 256, 256).data;
+/** Pure: slope/aspect/hillshade for the 256x256 interior of a 258x258 padded elevation grid (row-major, metres). */
+function deriveTerrain(pad, z, ty) {
   const W = 258;
-  const pad = new Float32Array(W * W);
-  for (let r = 0; r < 256; r++) {
-    for (let c = 0; c < 256; c++) {
-      const i = (r * 256 + c) * 4;
-      pad[(r + 1) * W + c + 1] = px[i] * 256 + px[i + 1] + px[i + 2] / 256 - 32768;
-    }
-  }
-  // clamp edges (replicate) - may leave a faint 1px seam in slope between tiles
-  for (let c = 0; c < 256; c++) { pad[c + 1] = pad[W + c + 1]; pad[257 * W + c + 1] = pad[256 * W + c + 1]; }
-  for (let r = 0; r < 258; r++) { pad[r * W] = pad[r * W + 1]; pad[r * W + 257] = pad[r * W + 256]; }
-
   const elev = new Float32Array(256 * 256);
   const slope2 = new Uint8Array(256 * 256);   // slope in half-degrees
   const aspect = new Uint8Array(256 * 256);   // sector 0..7
@@ -262,20 +297,47 @@ function decodeDem(img, z, ty) {
   return {elev, slope2, aspect, hill};
 }
 
+/** Build the 258x258 pad from the centre raw tile and the 8 neighbours (null = missing -> edge replication). */
+function buildPad(nb) {
+  const W = 258;
+  const ctr = nb[4];
+  const pad = new Float32Array(W * W);
+  for (let r = 0; r < 256; r++) pad.set(ctr.subarray(r * 256, r * 256 + 256), (r + 1) * W + 1);
+  // replicate edges first (fallback for any missing neighbour)
+  for (let c = 0; c < 256; c++) { pad[c + 1] = pad[W + c + 1]; pad[257 * W + c + 1] = pad[256 * W + c + 1]; }
+  for (let r = 0; r < 258; r++) { pad[r * W] = pad[r * W + 1]; pad[r * W + 257] = pad[r * W + 256]; }
+  // then overwrite with neighbour data where present. nb index = (dy+1)*3 + (dx+1)
+  const N = nb[1], S = nb[7], Wt = nb[3], E = nb[5];
+  if (N) for (let c = 0; c < 256; c++) pad[c + 1] = N[255 * 256 + c];
+  if (S) for (let c = 0; c < 256; c++) pad[257 * W + c + 1] = S[c];
+  if (Wt) for (let r = 0; r < 256; r++) pad[(r + 1) * W] = Wt[r * 256 + 255];
+  if (E) for (let r = 0; r < 256; r++) pad[(r + 1) * W + 257] = E[r * 256];
+  if (nb[0]) pad[0] = nb[0][255 * 256 + 255];
+  if (nb[2]) pad[257] = nb[2][255 * 256];
+  if (nb[6]) pad[257 * W] = nb[6][255];
+  if (nb[8]) pad[257 * W + 257] = nb[8][0];
+  return pad;
+}
+
 function loadDem(z, x, y) {
   const key = demKey(z, x, y);
   const hit = demCache.get(key);
   if (hit) return hit.promise;
   const entry = {data: null, promise: null};
-  entry.promise = new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try { entry.data = decodeDem(img, z, y); resolve(entry.data); }
-      catch (err) { reject(err); }
-    };
-    img.onerror = () => reject(new Error('DEM tile failed: ' + key));
-    img.src = DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  const n = Math.pow(2, z);
+  const tiles = [];   // centre is index 4
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= n) tiles.push(Promise.resolve(null));   // off the world: missing
+      else tiles.push(loadRaw(z, (((x + dx) % n) + n) % n, ny));  // x wraps
+    }
+  }
+  entry.promise = Promise.allSettled(tiles).then(res => {
+    if (res[4].status === 'rejected') throw res[4].reason;
+    const nb = res.map(r => (r.status === 'fulfilled' ? r.value : null));
+    entry.data = deriveTerrain(buildPad(nb), z, y);
+    return entry.data;
   }).catch(err => { demCache.delete(key); throw err; });
   demCache.set(key, entry);
   if (demCache.size > DEM_CACHE_MAX) demCache.delete(demCache.keys().next().value);
@@ -318,8 +380,9 @@ function addNotice(line) {
 const zoneReady = fetch(ZONE_URL)
   .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
   .then(fc => {
-    const feat = (fc.features || []).find(f => f.properties && f.properties.name === ZONE.name);
-    if (!feat) throw new Error('zone "' + ZONE.name + '" not found');
+    const feat = (fc.features || []).find(f => f.properties && f.properties.name === ZONE.name) ||
+      (fc.features || []).find(f => f.id === ZONE.id);
+    if (!feat) throw new Error('zone "' + ZONE.name + '" (id ' + ZONE.id + ') not found');
     const polys = zonePolys(feat.geometry);
     const b = L.latLngBounds([]);
     polys.forEach(p => p[0].forEach(c => b.extend([c[1], c[0]])));
@@ -337,12 +400,15 @@ let day = null;        // loaded day JSON
 let rose = null;
 let statusMsg = 'Loading forecast\u2026';   // shown instead of a level while rose is null
 let shownDate = null;  // date the UAC links point at, or null
-// LUT: index 0..23 -> [r,g,b,baseAlpha] or null; rebuilt from rose whenever the day changes
+// LUT: index 0..23 -> null, [r,g,b,alpha] (solid) or [r,g,b,alpha,sr,sg,sb,salpha] (hatched:
+// base color + stripe color; a transparent base has alpha 0). Rebuilt whenever the day changes.
 let LUT = [];
 function rebuildLut() {
   LUT = rose ? rose.map(v => {
-    const lv = LEVELS[levelOf(v)];
-    return lv ? [lv.rgb[0], lv.rgb[1], lv.rgb[2], lv.alpha] : null;
+    const {base, stripe} = cellLevels(v);
+    if (!stripe) return base ? [base.rgb[0], base.rgb[1], base.rgb[2], base.alpha] : null;
+    const br = base ? base.rgb : stripe.rgb;   // transparent base: color unused (alpha 0)
+    return [br[0], br[1], br[2], base ? base.alpha : 0, stripe.rgb[0], stripe.rgb[1], stripe.rgb[2], stripe.alpha];
   }) : [];
 }
 
@@ -388,6 +454,8 @@ function paintOverlay(canvas, coords, dem) {
   }
   const img = ctx.createImageData(256, 256);
   const out = img.data;
+  // Stripes follow world pixels (wx + wy) at this zoom, so they line up across tile edges.
+  const wOff = (((coords.x * 256 + coords.y * 256 + 1) % HATCH_PERIOD) + HATCH_PERIOD) % HATCH_PERIOD;   // +1: pixel centres
   for (let n = 0; n < 65536; n++) {
     const slope = dem.slope2[n] / 2;
     let a;
@@ -397,8 +465,24 @@ function paintOverlay(canvas, coords, dem) {
     const ent = LUT[bandOffset(dem.elev[n]) + dem.aspect[n]];
     if (!ent) continue;
     const o = n * 4;
-    out[o] = ent[0]; out[o + 1] = ent[1]; out[o + 2] = ent[2];
-    out[o + 3] = Math.round(255 * ent[3] * a);
+    if (ent.length === 4) {
+      out[o] = ent[0]; out[o + 1] = ent[1]; out[o + 2] = ent[2];
+      out[o + 3] = Math.round(255 * ent[3] * a);
+      continue;
+    }
+    // Hatched: u = position in the period along the diagonal; dIn = signed distance (px, along x)
+    // inside the stripe edge. Perpendicular distance = dIn / sqrt2; a 1-px linear ramp antialiases.
+    const u = (wOff + (n & 255) + (n >> 8)) % HATCH_PERIOD;
+    const half = HATCH_PERIOD / 2;
+    const dIn = u < half ? Math.min(u, half - u) : -Math.min(u - half, HATCH_PERIOD - u);
+    const t = Math.max(0, Math.min(1, dIn / Math.SQRT2 + 0.5));   // stripe coverage
+    const wb = ent[3] * (1 - t), ws = ent[7] * t;                 // weights (alpha-premultiplied)
+    const A = wb + ws;
+    if (A <= 0) continue;
+    out[o]     = Math.round((ent[0] * wb + ent[4] * ws) / A);
+    out[o + 1] = Math.round((ent[1] * wb + ent[5] * ws) / A);
+    out[o + 2] = Math.round((ent[2] * wb + ent[6] * ws) / A);
+    out[o + 3] = Math.round(255 * A * a);
   }
   ctx.globalCompositeOperation = 'source-over';
   ctx.putImageData(img, 0, 0);
@@ -539,6 +623,28 @@ const roseCells = [];   // index 0..23, same as forecast array
 const roseTitles = [];  // <title> elements, same indexing
 (function buildRose() {
   const svg = document.getElementById('roseSvg');
+  // One hatch pattern per odd value. Horizontal bands rotated -45deg run "/" like the map stripes.
+  const defs = document.createElementNS(SVGNS, 'defs');
+  for (const v of [1, 3, 5, 7, 9]) {
+    const {base, stripe} = cellLevels(v);
+    const pat = document.createElementNS(SVGNS, 'pattern');
+    pat.setAttribute('id', 'pk-' + v);
+    pat.setAttribute('patternUnits', 'userSpaceOnUse');
+    pat.setAttribute('width', SVG_HATCH); pat.setAttribute('height', SVG_HATCH);
+    pat.setAttribute('patternTransform', 'rotate(-45)');
+    if (base) {
+      const b = document.createElementNS(SVGNS, 'rect');
+      b.setAttribute('width', SVG_HATCH); b.setAttribute('height', SVG_HATCH);
+      b.setAttribute('fill', 'rgb(' + base.rgb.join(',') + ')');
+      pat.appendChild(b);
+    }
+    const st = document.createElementNS(SVGNS, 'rect');
+    st.setAttribute('width', SVG_HATCH); st.setAttribute('height', SVG_HATCH / 2);
+    st.setAttribute('fill', 'rgb(' + stripe.rgb.join(',') + ')');
+    pat.appendChild(st);
+    defs.appendChild(pat);
+  }
+  svg.appendChild(defs);
   for (const band of ['upper', 'mid', 'low']) {
     for (let k = 0; k < 8; k++) {
       const idx = BAND_OFFSET[band] + k;
@@ -568,6 +674,10 @@ const roseTitles = [];  // <title> elements, same indexing
     s.innerHTML = '<i style="background:rgb(' + LEVELS[k].rgb.join(',') + ')"></i>' + LEVELS[k].name;
     lg.appendChild(s);
   });
+  const pk = document.createElement('span');
+  const lo = LEVELS[2].rgb.join(','), mo = LEVELS[4].rgb.join(',');
+  pk.innerHTML = '<i style="background:repeating-linear-gradient(135deg,rgb(' + lo + ') 0 3px,rgb(' + mo + ') 3px 6px)"></i>Pockets of next level';
+  lg.appendChild(pk);
   const ring = document.createElement('span');
   ring.textContent = 'Rings: inner upper (>9,500 ft), middle mid, outer low (<8,000 ft)';
   ring.style.flexBasis = '100%';
@@ -577,9 +687,15 @@ const roseTitles = [];  // <title> elements, same indexing
 /** Refresh the rose panel, UAC links and attribution from day / rose / statusMsg / shownDate. Reusable on date change. */
 function showDay() {
   for (let idx = 0; idx < 24; idx++) {
-    const lv = rose ? LEVELS[levelOf(rose[idx])] : null;
-    roseCells[idx].setAttribute('fill', lv ? 'rgb(' + lv.rgb.join(',') + ')' : 'none');
-    roseTitles[idx].el.textContent = rose ? roseTitles[idx].label + ': ' + (lv ? lv.name : 'No rating') : 'No data';
+    let fill = 'none';
+    if (rose) {
+      const v = rose[idx];
+      const lv = cellLevels(v);
+      if (v % 2 === 1) fill = 'url(#pk-' + v + ')';
+      else if (lv.base) fill = 'rgb(' + lv.base.rgb.join(',') + ')';
+    }
+    roseCells[idx].setAttribute('fill', fill);
+    roseTitles[idx].el.textContent = rose ? roseTitles[idx].label + ': ' + levelText(rose[idx]) : 'No data';
   }
   // The date input shows the date, so this line is the status line.
   let line = statusMsg;
@@ -634,8 +750,7 @@ function lookup(latlng) {
   const ft = Math.round(elevM * FT_PER_M).toLocaleString('en-US');
   if (slope < FLAT_DEG) { setReadout('Flat ground (<' + FLAT_DEG + '°) · ' + ft + ' ft · aspect not meaningful'); return; }
   const idx = bandOffset(elevM) + asp;
-  const lv = rose ? LEVELS[levelOf(rose[idx])] : null;
-  const lvTxt = rose ? (lv ? lv.name : 'No rating') : statusMsg;
+  const lvTxt = rose ? levelText(rose[idx]) : statusMsg;
   let txt = ASPECTS[asp] + ' · ' + ft + ' ft · ' + Math.round(slope) + '° · ' + lvTxt;
   if (rose && mode === 'slope' && slope < SLOPE_RAMP_LO) txt += ' (not shaded: <' + SLOPE_RAMP_LO + '°)';
   setReadout(txt, rose ? idx : undefined);
