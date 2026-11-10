@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#58a6ff;--muted:#8b949e;--text:#e6edf3;--warn:#d29922;--btn-on-text:#000}
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#58a6ff;--muted:#8b949e;--text:#e6edf3;--warn:#d29922;--btn-on-text:#000;--cs:dark;color-scheme:var(--cs)}
   @media (prefers-color-scheme: light){
-    :root{--bg:#f6f8fa;--surface:#ffffff;--border:#d0d7de;--accent:#0969da;--muted:#636c76;--text:#1f2328;--warn:#9a6700;--btn-on-text:#fff}
+    :root{--bg:#f6f8fa;--surface:#ffffff;--border:#d0d7de;--accent:#0969da;--muted:#636c76;--text:#1f2328;--warn:#9a6700;--btn-on-text:#fff;--cs:light}
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -33,6 +33,12 @@
     border:1px solid var(--border);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:11px}
   #rose .ttl{font-weight:600}
   #rose .dt{color:var(--muted);margin-bottom:2px}
+  #rose .dt:empty{margin:0}
+  #rose .dsw{display:flex;align-items:center;gap:3px;margin:3px 0 4px}
+  #rose .dsw button{flex:0 0 28px;height:28px;padding:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:16px/1 system-ui,sans-serif;cursor:pointer}
+  #rose .dsw button:disabled{opacity:.4;cursor:not-allowed}
+  #rose .dsw input{flex:1 1 auto;min-width:0;height:28px;padding:0 3px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:11px system-ui,sans-serif;color-scheme:var(--cs);max-width:100%;-webkit-text-fill-color:var(--text)}
+  #rose .dsw button:focus-visible,#rose .dsw input:focus-visible{outline:2px solid var(--text);outline-offset:1px}
   #rose .uac{display:block;color:var(--accent);font-size:11px;padding:3px 0;margin-bottom:2px;white-space:nowrap;text-decoration:underline}
   #rose .uac[hidden]{display:none}
   #rose .uac:focus-visible,.modebar button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
@@ -47,10 +53,15 @@
     border:1px solid var(--warn);border-radius:6px;padding:4px 8px;font-size:11px;max-width:70%;white-space:pre-line}
   #notice[hidden]{display:none}
   @media (max-width:520px){
-    #rose{width:150px;padding:6px;bottom:24px}
+    #rose{width:168px;padding:6px;bottom:24px}
     .legend{display:none}
     #readout{font-size:10px}
     #rose .uac{white-space:normal}
+    #rose .dsw{gap:2px}
+    #rose .dsw button{flex-basis:30px}
+    #rose .dsw button,#rose .dsw input{height:36px}
+    #rose .dsw input::-webkit-calendar-picker-indicator{padding:0;margin:0;width:14px}
+    #rose .dsw input{padding:0 1px;font-size:10px}
   }
 </style>
 </head>
@@ -63,7 +74,12 @@
 <div id="notice" hidden></div>
 <div id="rose">
   <div class="ttl">Salt Lake &middot; overall danger</div>
-  <div class="dt" id="roseDate">Loading forecast&hellip;</div>
+  <div class="dsw">
+    <button type="button" id="datePrev" aria-label="Previous forecast day" disabled>&#8249;</button>
+    <input type="date" id="dateInput" aria-label="Forecast date">
+    <button type="button" id="dateNext" aria-label="Next forecast day" disabled>&#8250;</button>
+  </div>
+  <div class="dt" id="roseDate" role="status">Loading forecast&hellip;</div>
   <a class="uac" id="roseLink" target="_blank" rel="noopener" aria-label="Archived forecast on Utah Avalanche Center (opens in new tab)">Archived forecast on UAC &#8599;</a>
   <svg id="roseSvg" viewBox="-110 -110 220 220" role="img" aria-label="Avalanche danger rose"></svg>
   <div id="readout">Hover the map</div>
@@ -76,7 +92,8 @@
 /* ================= Forecast data (static JSON files, loaded at runtime) =================
  * data/avy/{center}/{slug}/index.json        {schema, center, zone, updated_at, dates: [ascending YYYY-MM-DD]}
  * data/avy/{center}/{slug}/{YYYY-MM-DD}.json  one day: {date, sample, overall_danger_rose: [24 ints], ...}
- * The newest day is the last entry of index.json. ?date=YYYY-MM-DD picks another day.
+ * The newest day is the last entry of index.json. ?date=YYYY-MM-DD picks another day; the date
+ * switcher (prev/next/date input) rewrites it with history.replaceState. An invalid ?date= is removed.
  * Rose encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
  * Each band ordered N, NE, E, SE, S, SW, W, NW.
  * Values: 0 = no rating, 2 = Low, 4 = Moderate, 6 = Considerable, 8 = High, 10 = Extreme.
@@ -564,13 +581,15 @@ function showDay() {
     roseCells[idx].setAttribute('fill', lv ? 'rgb(' + lv.rgb.join(',') + ')' : 'none');
     roseTitles[idx].el.textContent = rose ? roseTitles[idx].label + ': ' + (lv ? lv.name : 'No rating') : 'No data';
   }
+  // The date input shows the date, so this line is the status line.
   let line = statusMsg;
-  if (rose) line = shownDate + (day && day.sample === true ? ' \u00b7 Sample data' : '');
+  if (rose) line = (day && day.sample === true) ? 'Sample data' : '';
   document.getElementById('roseDate').textContent = line;
   const link = document.getElementById('roseLink');
   if (shownDate) { link.href = uacForecastUrl(ZONE.slug, shownDate); link.hidden = false; }
   else { link.removeAttribute('href'); link.hidden = true; }
   setUacAttribution(shownDate);
+  syncSwitcher();
 }
 
 /** Make newDay (validated) or nothing (newDay null, msg explains) the current day, and repaint. */
@@ -635,6 +654,67 @@ map.on('zoomend', () => { pending = null; });
 L.DomEvent.disableClickPropagation(document.getElementById('rose'));
 L.DomEvent.disableScrollPropagation(document.getElementById('rose'));
 
+/* ================= Date switcher ================= */
+const dateInput = document.getElementById('dateInput');
+const datePrev = document.getElementById('datePrev');
+const dateNext = document.getElementById('dateNext');
+
+/** Latest index date strictly before d, or null. ISO dates compare correctly as strings. */
+function prevIndexDate(d) {
+  if (!indexDates || !d) return null;
+  let best = null;
+  for (const x of indexDates) if (x < d && (best === null || x > best)) best = x;
+  return best;
+}
+/** Earliest index date strictly after d, or null. */
+function nextIndexDate(d) {
+  if (!indexDates || !d) return null;
+  let best = null;
+  for (const x of indexDates) if (x > d && (best === null || x < best)) best = x;
+  return best;
+}
+
+/** Single place that syncs the switcher (value, min, max, disabled) to shownDate and indexDates. */
+function syncSwitcher() {
+  const off = location.protocol === 'file:';
+  dateInput.disabled = off;
+  dateInput.value = shownDate || '';
+  if (indexDates) {
+    dateInput.min = indexDates.reduce((a, b) => (b < a ? b : a));
+    dateInput.max = indexDates.reduce((a, b) => (b > a ? b : a));
+  } else {
+    dateInput.removeAttribute('min');
+    dateInput.removeAttribute('max');
+  }
+  const pv = prevIndexDate(shownDate), nx = nextIndexDate(shownDate);
+  datePrev.disabled = off || pv === null;
+  dateNext.disabled = off || nx === null;
+  datePrev.title = off ? 'Date switching needs the page served over http' : pv ? 'Previous forecast: ' + pv : 'No earlier forecast';
+  dateNext.title = off ? 'Date switching needs the page served over http' : nx ? 'Next forecast: ' + nx : 'No later forecast';
+}
+
+/** Put ?date= in the address bar (null removes it), keeping other params and the hash. */
+function setUrlDate(date) {
+  try {
+    const u = new URL(location.href);
+    if (date) u.searchParams.set('date', date); else u.searchParams.delete('date');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  } catch (e) { console.warn('Could not update URL:', e); }
+}
+
+/** User-driven day change: URL first, then load (loadDay sets shownDate, which syncs the switcher). */
+function pickDate(date) {
+  setUrlDate(date);
+  loadDay(date);
+}
+datePrev.addEventListener('click', () => { const d = prevIndexDate(shownDate); if (d) pickDate(d); });
+dateNext.addEventListener('click', () => { const d = nextIndexDate(shownDate); if (d) pickDate(d); });
+dateInput.addEventListener('change', () => {
+  const v = dateInput.value;
+  if (!DATE_RE.test(v)) { dateInput.value = shownDate || ''; return; }   // empty/partial: restore
+  if (v !== shownDate) pickDate(v);
+});
+
 /* ================= Forecast loader ================= */
 let reqToken = 0;        // monotonically increasing; a response from an older request is dropped
 let indexDates = null;   // validated index dates, or null if the index is unavailable
@@ -677,6 +757,7 @@ async function loadDay(date) {
 async function initForecast() {
   const q = new URLSearchParams(location.search).get('date');
   const reqDate = (q !== null && DATE_RE.test(q)) ? q : null;
+  if (q !== null && reqDate === null) setUrlDate(null);   // invalid ?date=: drop it, fall back to newest
   if (location.protocol === 'file:') {
     const msg = 'Serve over http (see README)';
     addNotice(msg);
@@ -684,6 +765,7 @@ async function initForecast() {
     return;
   }
   setDay(null, reqDate, 'Loading forecast\u2026');
+  const initToken = reqToken;   // a pick made while the index loads must win over the default day
   try {
     const idx = await fetchJson(INDEX_URL);
     if (!idx || !Array.isArray(idx.dates) || idx.dates.length === 0 ||
@@ -695,6 +777,8 @@ async function initForecast() {
     console.warn('Forecast index unavailable:', err);
     addNotice('Forecast index could not be loaded.');
   }
+  syncSwitcher();
+  if (reqToken !== initToken) return;
   if (indexDates) loadDay(reqDate || indexDates[indexDates.length - 1]);
   else if (reqDate) loadDay(reqDate);
   else setDay(null, null, 'No forecast available');

@@ -12,7 +12,7 @@ Batch 2 settled the design on 2026-11-10. The live data source is parked until t
 | 2 | Grill on open topics | web-fetch (facts), architect (data layout) | Settled every open topic except the live data source; rewrote batches 3 onward. | Done |
 | 3 | UAC link and remembered settings | implementer, ux-reviewer | "Archived forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Done |
 | 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Done |
-| 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Not started |
+| 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Done |
 | 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Not started |
 | 7 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, README section, in-page note, CONTEXT.md terms, then merge. Deploy unlinked only with the user's OK. | Not started |
 | — | Live data pipeline | architect, implementer, qa-validator | UAC token + DreamHost cron job writing the same files for all 9 UAC zones. | Blocked: user reading UAC Data Access Policy |
@@ -245,3 +245,9 @@ Only what the user put off on 2026-11-10.
   - `repaint()` clears tiles when there is no rose and reloads terrain for tiles evicted from the cache, so day changes never leave old colors.
   - Checked in the browser: newest day by default, gap day, bad `?date=`, 404, bad JSON, short, non-integer and out-of-range roses, mislabeled file, stale response, index missing with and without `?date=`. The qa-validator checked file://, repaint ordering and the data files by reading the code.
   - deploy.sh was reviewed but not run (it refuses off main). `./deploy.sh -n` on main after the merge is the first real check.
+- **Batch 5:**
+  - The switcher row (`#datePrev`, `#dateInput`, `#dateNext`) sits under the panel title. `syncSwitcher()` is the single sync point, called from `showDay()` and after the index load. `pickDate(date)` writes `?date=` via `setUrlDate()` and then calls `loadDay`. Prev/next go to the nearest index date strictly before or after the shown one, so they work from gap days.
+  - `#roseDate` is now a status line ("Sample data" or the error message), since the input shows the date. It collapses when empty.
+  - `initForecast` skips its default `loadDay` if the user picked a date while the index was still loading (found by the qa-validator).
+  - After the ux-reviewer's review: the phone panel is 168px wide with 36px-tall controls, disabled buttons show a reason in `title`, and `color-scheme` is set on `:root`.
+  - Checked in the browser (Chromium): default newest day, stepping across the 2025-02-12 gap, the gap day picked in the input, rapid prev clicks, `?date=bad&x=1#h` (becomes `?x=1#h`), a pick while the index loads, and the phone layout. Not checked on a real iOS Safari or Android device.
