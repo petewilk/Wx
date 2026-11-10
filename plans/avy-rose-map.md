@@ -4,17 +4,18 @@ Paints the Utah Avalanche Center (UAC) danger rose onto a topographic map. Each 
 
 ## Batches
 
-Batch 2 comes first in the next session: it grills the user on every open topic before any more code is written. The later batches are tentative, and batch 2 rewrites them from the user's answers.
+Batch 2 settled the design on 2026-11-10. The live data source is parked until the user has read UAC's Data Access Policy (see **Open decisions**), so batches 3–7 build everything that doesn't need it, on hand-entered sample days in the same file format a future server job would write.
 
 | # | Batch | Agents | Description | Status |
 |---|-------|--------|-------------|--------|
 | 1 | Prototype | implementer, qa-validator | Single-file page that paints a hardcoded archived rose (Salt Lake, 2025-02-11) on terrain computed in the browser. | Done (`8db65c6`) |
-| 2 | Grill on open topics | librarian / web-fetch (facts), architect (data pipeline) | Use the `grilling` skill to settle everything under **Open decisions** and the *open* items under **Planned features**. Agents look up facts while the user answers. Write the answers into this file and rewrite batches 3 onward. | Not started |
-| 3 | UAC forecast link | implementer, ux-reviewer | Add "Full forecast on UAC ↗" to the rose panel for the hardcoded day. It doesn't depend on the data decision. | Not started |
-| 4 | Live data pipeline | architect, implementer, qa-validator | Build whatever batch 2 chose, e.g. a server-side job that writes forecast JSON per day, and have the page load it in place of `FORECAST`. | Not started |
-| 5 | Date switcher | implementer, qa-validator, ux-reviewer | Add the day picker on top of the batch 4 data, with the link following the selected day. | Not started |
-| 6 | Other open items | per batch 2 | Per-problem roses, "pockets of" ratings, default mode, tile seams, and anything else batch 2 schedules. | Not started |
-| 7 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Check on phone and in dark mode, write the README section, the in-page note and CONTEXT.md terms, then merge. Deploying waits for the user's OK. | Not started |
+| 2 | Grill on open topics | web-fetch (facts), architect (data layout) | Settled every open topic except the live data source; rewrote batches 3 onward. | Done |
+| 3 | UAC link and remembered settings | implementer, ux-reviewer | "Full forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Not started |
+| 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Not started |
+| 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Not started |
+| 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Not started |
+| 7 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, README section, in-page note, CONTEXT.md terms, then merge. Deploy unlinked only with the user's OK. | Not started |
+| — | Live data pipeline | architect, implementer, qa-validator | UAC token + DreamHost cron job writing the same files for all 9 UAC zones. | Blocked: user reading UAC Data Access Policy |
 
 Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
 
@@ -35,30 +36,44 @@ Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
 
 ## Batch details
 
-### Batch 2: Grill on open topics (grilling skill, plus agents for facts)
-- **Kickoff:** `Run batch 2 of plans/avy-rose-map.md.`
-- **How it runs:**
-  - Invoke the `grilling` skill.
-  - Ask each question with the AskUserQuestion tool, with up to 4 questions per round and the recommended option first. Don't ask them as a numbered text list.
-  - Work the frontier in rounds, as the skill describes.
-- **Topics, in rough dependency order:**
-  1. **Live data source** (open decision 1). Before asking, send `librarian` or `web-fetch` to read UAC's Data Access Policy if it's visible, and to check whether the tokened API serves past dates and what its CORS headers are. Then ask about the token, the server-side piece (DreamHost cron or a PHP proxy) and how often to poll. Once the user chooses, have `architect` sketch the pipeline: where JSON files live, the file naming, failure handling, and how the page finds the latest day.
-  2. **Date switcher details:** the control style, the date range, whether the date goes in the URL, and whether to use a stand-in sample day before the pipeline exists. These depend on 1.
-  3. **UAC link:** confirm its placement and text, and whether to always use the archive URL.
-  4. **Per-problem roses** (open decision 2).
-  5. **"Pockets of" rendering** (open decision 3).
-  6. **Default mode** (open decision 4). The user leaned toward All terrain on 2026-11-09.
-  7. **Other zones and states** (open decision 5): only whether they shape the data design now, or wait.
-  8. **Deploy and site link** (open decision 6).
-- **Done means:**
-  - Every open item is answered and moved into **Agreed design**.
-  - **Open decisions** holds only what the user explicitly put off.
-  - Batches 3 onward are rewritten with agents and kickoff lines.
-  - The user has confirmed the shared understanding, and the change is committed.
+Every batch's kickoff is `Run batch N of plans/avy-rose-map.md.` Follow **How to run a batch** above and the **Agreed design** below.
 
-### Batches 3–7
-- **Kickoff:** `Run batch N of plans/avy-rose-map.md.`
-- Details are written by batch 2.
+### Batch 3: UAC link and remembered settings (implementer, ux-reviewer)
+- **Kickoff:** `Run batch 3 of plans/avy-rose-map.md.`
+- Add "Full forecast on UAC ↗" on its own line under the forecast date in the rose panel, `target="_blank" rel="noopener"`. Build the URL from zone slug and date with the archive pattern (see **UAC link**), not from `FORECAST.source`.
+- First-visit defaults: All terrain mode, OSM + hillshade, 50% opacity. Save mode, basemap and opacity to localStorage on change and restore them on load. Wrap every localStorage read and write in try/catch; ignore unknown stored values.
+- Check in the browser preview: link URL for 2025-02-11, settings survive a reload, a private window falls back to defaults.
+
+### Batch 4: Forecast data files (implementer, qa-validator)
+- **Kickoff:** `Run batch 4 of plans/avy-rose-map.md.`
+- **Sample days:** the main session reads the rose PNGs from UAC's archive pages in the built-in browser (Cloudflare blocks curl and agents), checks each against that day's bottom line, and hands the 24 values to the implementer. Pick from the 2024/25 season: keep 2025-02-11, add a contrasting Low/Moderate day, a day with odd "pockets of" values, and leave at least one gap day inside the range with no file.
+- Write the files in the format under **Forecast data files**, with `"sample": true`.
+- Replace the inline `FORECAST` constant with the loader and failure handling under **Page loading**. Show "Sample data" in the panel when `sample` is true. Until batch 5, the page shows the newest day in the index.
+- Extend deploy.sh as described under **Deploy**. Test with `./deploy.sh -n` on main only after merge; on this branch just review the diff.
+- qa-validator: malformed rose, 404 day, failed index, file:// notice, stale response dropped.
+
+### Batch 5: Date switcher (implementer, qa-validator, ux-reviewer)
+- **Kickoff:** `Run batch 5 of plans/avy-rose-map.md.`
+- Build the switcher under **Date switcher** on top of batch 4's index. Changing the day repaints from the terrain cache and updates the rose, readout, UAC link and URL.
+- qa-validator: stepping skips gap days, the input picking a gap day shows "No forecast for this date", bad `?date=` falls back to newest, rapid switching shows the last pick.
+- ux-reviewer: phone layout of the panel with the switcher.
+
+### Batch 6: Pockets hatching, tile seams, zone fallback (implementer, qa-validator)
+- **Kickoff:** `Run batch 6 of plans/avy-rose-map.md.`
+- **Pockets:** draw odd values as the lower level's color with diagonal stripes of the next level up, both on the map overlay and in the rose wedge (an SVG pattern). The readout says "Pockets of Considerable". The batch 4 pockets sample day is the test case.
+- **Tile seams:** compute slope and aspect at tile edges from the 8 neighbouring Terrarium tiles (cached like the others) instead of copied edge pixels. Missing neighbours fall back to the current copy.
+- **Zone fallback:** find the Salt Lake polygon by name, then by id 1738.
+- qa-validator: no seam line at tile edges on a synthetic slope across a tile boundary; hatch pattern scales with zoom without moiré.
+
+### Batch 7: Review, docs and ship (ux-reviewer, qa-validator, doc-writer)
+- **Kickoff:** `Run batch 7 of plans/avy-rose-map.md.`
+- ux-reviewer on phone and dark mode; qa-validator full pass; doc-writer writes the README section (including serving over http, and the data layout), in-page note and CONTEXT.md terms.
+- Merge to main with the user's OK. Deploy with `./deploy.sh` only with the user's OK; the page stays unlinked from the site.
+
+### Live data pipeline (parked)
+- **Kickoff:** `Run the live data pipeline batch of plans/avy-rose-map.md.` Only after the user has read the Data Access Policy and has a token.
+- Settle first: cron job vs PHP proxy, where the token lives on DreamHost, the User-Agent string, and whether sample files are deleted or kept on the server.
+- The job writes the files under **Forecast data files** for all 9 UAC zones, polling every 15 minutes from 5 to 8 AM Mountain time until that day's forecast is in.
 
 ## Agreed design (spec)
 
@@ -112,31 +127,63 @@ These decisions came out of the design interview on 2026-11-09. Don't change the
   - **CyclOSM.**
 - **Attribution** for each basemap, plus "Elevation: AWS Terrain Tiles (Mapzen)" and "Forecast: Utah Avalanche Center".
 
-## Planned features
+## Agreed design, batch 2 (2026-11-10)
 
-Added at the user's request on 2026-11-09. Details marked *open* are settled in batch 2.
+These came out of the batch 2 grilling. Don't change them without asking the user. Where they differ from the 2026-11-09 spec above, these win.
+
+### Settings and defaults
+- **Danger mode, basemap and opacity are remembered** per browser in localStorage. First visit: All terrain, OSM + hillshade, 50%. The date is never remembered.
+
+### UAC link
+- **"Full forecast on UAC ↗"** on its own line under the forecast date in the rose panel, opening in a new tab.
+- **Always the archive URL** `https://utahavalanchecenter.org/forecast/{slug}/{M}/{D}/{YYYY}` (no leading zeros), built from the zone slug and the selected date. Use `/forecast/{slug}` only if the archive URL turns out not to work for the current day.
+- It doubles as UAC's attribution, and follows the date switcher.
+
+### "Pockets of" ratings
+- **Hatched:** the lower level's color with diagonal stripes of the next level up, on the map and in the rose. The readout says "Pockets of {level}". This replaces rounding down.
+
+### Forecast data files
+- **Static JSON in the repo**, laid out as a future server job would write it:
+  - `data/avy/{center}/{zone}/{YYYY-MM-DD}.json`, e.g. `data/avy/uac/salt-lake/2025-02-11.json`. Lowercase UAC slugs. The date is UAC's forecast date in Mountain time.
+  - `data/avy/{center}/{zone}/index.json`: `{ "schema": 1, "center": "uac", "zone": "salt-lake", "updated_at": "…Z", "dates": [ascending] }`. The newest day is the last entry. Gap days have no file and aren't listed.
+- **Day file:**
+  ```
+  { "schema": 1, "center": "uac", "zone": "salt-lake", "zone_name": "Salt Lake",
+    "date": "2025-02-11", "sample": true,
+    "source": "hand-entered from archived rose PNG" | "uac-api",
+    "source_url": "https://utahavalanchecenter.org/forecast/salt-lake/2/11/2025",
+    "issued_at": null | "<ISO 8601>", "fetched_at": null | "<ISO 8601 Z>",
+    "overall_danger_rose": [24 ints 0–10, UAC order, odd values kept],
+    "problems": [] }
+  ```
+  `problems` is reserved for per-problem roses (`[{ "rank", "name", "rose": [24] }]`) and ignored by the page.
+- **Sample days for now:** 2025-02-11 plus about 3 more from 2024/25, including a "pockets of" day and a gap day.
+- **All 9 UAC zones** go into the data once a pipeline exists; the page shows Salt Lake only. A zone picker and other states come later.
+
+### Page loading
+- Fetch the index and day files with `{cache: 'no-cache'}`; no `?v=` cache-busting.
+- `?date=` must match `^\d{4}-\d{2}-\d{2}$`, otherwise use the newest day.
+- **Date not in the index:** "No forecast for this date", no overlay, no day fetch.
+- **Index fetch fails:** a notice, prev/next disabled; if `?date=` was given, still try that day's file.
+- **Listed day file 404s:** "Forecast file missing for {date}", no overlay.
+- **Rose isn't 24 integers 0–10:** "Forecast data malformed", no overlay. Never fall back to another day's rose.
+- **Fast switching:** tag each request and drop any response that isn't the latest.
+- **file://:** show "Serve over http (see README)".
+- **`sample: true`:** the panel shows "Sample data".
 
 ### Date switcher
-- **Purpose:** a control on the page that picks which day's rose is painted. The rose panel, the map overlay and the hover readout all follow the selected day.
-- **Depends on batch 2.** The days it can offer depend on where the data comes from: a token API that serves past dates, a stored file per day written by a server-side job, or something else.
-- **Default:** the newest forecast available. In the prototype that's the hardcoded 2025-02-11.
-- **Changing the day repaints from the terrain cache,** like the mode toggle does, so no terrain is fetched again.
-- **Days with no forecast** (early and late season, or a missing day) show a clear "No forecast for this date" message and no overlay, not a stale rose.
-- *Open:*
-  - **Control style:** previous/next day buttons plus a date input, or a calendar.
-  - **Date range:** the current season only, or every season the data source has.
-  - **Saving the day in the URL:** e.g. `?date=2025-02-11`, so a view can be shared or bookmarked.
-  - **Prototype stand-in:** whether to hardcode a second sample day so the switcher can be built before batch 2.
+- **Prev/next buttons** step through the days in the index only, plus a **native date input** with min/max from the first and last dates. Picking a day not in the index shows "No forecast for this date".
+- **Range:** whatever the index lists, all seasons.
+- **URL:** `?date=YYYY-MM-DD`, updated with `history.replaceState`; no parameter means the newest day.
+- Changing the day repaints from the terrain cache. The rose panel, overlay, readout and UAC link follow it.
 
-### Link to the UAC forecast
-- **What it is:** a link in the rose panel, next to the forecast date, to that day's full forecast on the UAC site. It opens in a new tab.
-- **URL:**
-  - Today's forecast is `https://utahavalanchecenter.org/forecast/salt-lake`.
-  - Past days are `https://utahavalanchecenter.org/forecast/salt-lake/{M}/{D}/{YYYY}`, with no leading zeros, e.g. `/forecast/salt-lake/2/11/2025`.
-  - The archive pattern also works for today, so always using it keeps the link simple. Use `/forecast/salt-lake` only if the archive URL turns out not to work for the current day.
-- **The link follows the date switcher,** and the zone slug when more zones are added.
-- **The link text names the source,** e.g. "Full forecast on UAC ↗". This is also UAC's attribution.
-- **The prototype's `FORECAST.source` already holds this link for 2025-02-11.** It isn't shown in the panel yet.
+### Tile seams and zone lookup
+- Fix seams by reading the 8 neighbouring Terrarium tiles. Find the zone by name, falling back to id 1738.
+
+### Deploy
+- deploy.sh also sends git-tracked `data/avy/**/*.json` with `rsync -tvzR` (paths kept, no `--delete`), day files first, then `index.json` files, then the existing JS and HTML. The data files join the uncommitted-changes warning. `petewilk.com/data/` doesn't exist on the server yet (checked 2026-11-10), so nothing clashes.
+- **After batch 7, deploy unlinked** with the user's OK: reachable by URL, disclaimer kept, no link from the site until live data exists and the user says so.
+- When a cron job goes live, deploy.sh and the job would overwrite each other's files. The job rebuilds `index.json` from its directory on every run, and the sample files are removed or deploy uses `--update`. Decide in the pipeline batch.
 
 ## Research findings (2026-11-09)
 
@@ -152,26 +199,29 @@ Added at the user's request on 2026-11-09. Details marked *open* are settled in 
   - The rose on those pages is a PNG, for example the 2025-02-11 one at `sites/default/files/forecast/202502/20250212-005607-14.png`.
 - **Zone polygon:** the avalanche.org map-layer endpoint above, with CORS allowed. Salt Lake is feature id 1738.
 
+## Research findings (2026-11-10)
+
+- **UAC API docs** (read in the built-in browser; Cloudflare blocks curl): `GET https://utahavalanchecenter.org/forecast/{region}/json` for logan, ogden, uintas, salt-lake, provo, skyline, moab, abajos, southwest. Today's forecast only; no past-date parameter is documented. Set a User-Agent with contact info or the request may get a 400. Poll every 15 minutes from 5 to 8 AM.
+- **Rose values** confirmed: 0 no rating, odd = "pockets of" the next even level (1 pockets of Low … 9 pockets of Extreme). `danger_rose_1..3` (problem roses) only mark location; their values mean nothing since 2018/19.
+- **Data Access Policy** is shown only inside the token request form, so it can't be read in advance without starting a request.
+- **CORS:** the 401 response has no `Access-Control-Allow-Origin`. A tokened response is untested, so assume a server-side fetch is needed.
+- **avalanche.org** `map-layer/UAC?day=YYYY-MM-DD` serves past dates with open CORS, but only one danger level per zone. UAC sends avalanche.org no rose, elevation bands or problems. No public archive of UAC roses exists, so history starts the day our own collection does.
+
 ## Open decisions
 
-1. **Live data source** (batch 2). The token can't be put in the page's public JS, so a live feed needs something on the server side. Options:
-   - Request a UAC token, then use a DreamHost cron job or a PHP proxy that writes a static JSON file.
-   - Read the colors from the daily rose PNG. This is fragile, Cloudflare blocks it, and it likely goes around UAC's policy.
-   - Something else.
-   - The user chose to decide this after the prototype.
-   - This choice also decides which days the date switcher can offer, so check that the chosen source covers past dates.
-2. **Per-problem roses:** add a switcher to paint any of the day's problem roses.
-3. **"Pockets of" ratings:** how to draw odd values, for example a lighter shade or hatching.
-4. **Default mode:** the user currently prefers All terrain, because Low is hard to see in Slope-weighted. Make All terrain the default?
-5. **Other zones and states:** zone picker, a band table per zone, and other avalanche centers.
-6. **Deploy:** the page isn't linked from the site or deployed yet.
+Only what the user put off on 2026-11-10.
+
+1. **Live data source.** The user will read UAC's Data Access Policy (in the token request form) first. Leading option: a UAC token plus a DreamHost cron job that writes the files under **Forecast data files**. Also open: a PHP proxy instead, and what happens to the sample files.
+2. **Per-problem roses:** later. The data format reserves `problems` for them.
+3. **Zone picker and other states:** later. Data paths already include center and zone.
+4. **Linking the page from the site:** after live data exists.
 
 ## Known limitations of the prototype
 
 - **Blocky above zoom 15:** that's the terrain data's native limit.
 - **Tile seams:** a faint 1-pixel line can show at tile edges, because the edge pixels are copied rather than read from neighbouring tiles. The fix is to fetch the 8 neighbouring tiles.
 - **Band edges:** elevation is stored as Float32, so the exact band boundaries can be off by up to about 0.004 m. This can't happen with real Terrarium values.
-- **Zone lookup:** the zone is found by the name "Salt Lake" only, with no fallback to id 1738.
+- **Zone lookup:** the zone is found by the name "Salt Lake" only, with no fallback to id 1738. Fixed in batch 6, as are tile seams.
 
 ## Batch notes
 
@@ -179,3 +229,6 @@ Added at the user's request on 2026-11-09. Details marked *open* are settled in 
   - The qa-validator passed all 8 math checks on synthetic test slopes: elevation decoding, slope and aspect, sector edges, band edges, how the rose is indexed, the slope ramp, the tile-to-pixel lookup, and the zone clip.
   - Browser checks covered all three basemaps, both modes, the slider and the hover readout.
   - After review, the 1° gap between rose wedges was fixed, the default basemap was changed to OSM + hillshade, the opacity slider was added, and Low was set to the same opacity as the other levels.
+- **Batch 2:**
+  - UAC's docs and api-access pages load in the built-in browser but not via curl or WebFetch (Cloudflare). Use the built-in browser to read archived rose PNGs in batch 4.
+  - deploy.sh refuses to run off main, so sample data can't be deployed from this branch.
