@@ -10,7 +10,7 @@ Batch 2 settled the design on 2026-11-10. The live data source is parked until t
 |---|-------|--------|-------------|--------|
 | 1 | Prototype | implementer, qa-validator | Single-file page that paints a hardcoded archived rose (Salt Lake, 2025-02-11) on terrain computed in the browser. | Done (`8db65c6`) |
 | 2 | Grill on open topics | web-fetch (facts), architect (data layout) | Settled every open topic except the live data source; rewrote batches 3 onward. | Done |
-| 3 | UAC link and remembered settings | implementer, ux-reviewer | "Full forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Not started |
+| 3 | UAC link and remembered settings | implementer, ux-reviewer | "Full forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Done |
 | 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Not started |
 | 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Not started |
 | 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Not started |
@@ -232,3 +232,8 @@ Only what the user put off on 2026-11-10.
 - **Batch 2:**
   - UAC's docs and api-access pages load in the built-in browser but not via curl or WebFetch (Cloudflare). Use the built-in browser to read archived rose PNGs in batch 4.
   - deploy.sh refuses to run off main, so sample data can't be deployed from this branch.
+- **Batch 3:**
+  - The rose link's href is set in `buildRose()` from `uacForecastUrl(FORECAST.slug, FORECAST.date)`. The attribution link uses the same helper. Batch 5 re-points both when the day changes. `FORECAST.url` is no longer used, and batch 4 can drop it.
+  - Settings are stored under `avyMap.mode`, `avyMap.basemap` (`osmHill` | `topo` | `cyclo`) and `avyMap.opacity`. Invalid values fall back to the defaults.
+  - Checked in the browser: link URL for 2025-02-11, settings survive a reload, invalid stored values fall back, a sandboxed frame with storage blocked renders with defaults, and the link fits the 150px phone panel (136 of 136px, `nowrap`). Any longer label needs a phone-width rule.
+  - Two ux-reviewer points were left as agreed in the spec, pending the user: a remembered 0% opacity shows no overlay on return, and the link label says "Full forecast" even though it points at an archived day.

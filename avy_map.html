@@ -33,6 +33,8 @@
     border:1px solid var(--border);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:11px}
   #rose .ttl{font-weight:600}
   #rose .dt{color:var(--muted);margin-bottom:2px}
+  #rose .uac{display:block;color:var(--accent);font-size:11px;padding:3px 0;margin-bottom:2px;white-space:nowrap;text-decoration:underline}
+  #rose .uac:focus-visible,.modebar button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
   #rose svg{display:block;width:100%;height:auto}
   #rose .cell{stroke:var(--muted);stroke-width:.6}
   #rose .cell.hl{stroke:var(--text);stroke-width:3}
@@ -60,6 +62,7 @@
 <div id="rose">
   <div class="ttl">Salt Lake &middot; overall danger</div>
   <div class="dt" id="roseDate"></div>
+  <a class="uac" id="roseLink" target="_blank" rel="noopener" aria-label="Full forecast on Utah Avalanche Center (opens in new tab)">Full forecast on UAC &#8599;</a>
   <svg id="roseSvg" viewBox="-110 -110 220 220" role="img" aria-label="Avalanche danger rose"></svg>
   <div id="readout">Hover the map</div>
   <div class="legend" id="legend"></div>
@@ -79,6 +82,7 @@
  */
 const FORECAST = {
   zone: 'Salt Lake',
+  slug: 'salt-lake',
   date: '2025-02-11',
   url: 'https://utahavalanchecenter.org/forecast/salt-lake/2/11/2025',
   rose: [6,6,6,4,4,4,4,6,  6,6,6,4,2,2,4,6,  4,4,4,2,2,2,2,4]
@@ -107,6 +111,37 @@ const ZONE_URL = 'https://api.avalanche.org/v2/public/products/map-layer/UAC';
 const ZONE_NAME = 'Salt Lake';
 const DEM_CACHE_MAX = 300;
 
+/** UAC forecast page for a zone slug + ISO date (YYYY-MM-DD); no leading zeros. Split, not Date(), to avoid TZ shifts. */
+function uacForecastUrl(slug, isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return 'https://utahavalanchecenter.org/forecast/' + slug + '/' + m + '/' + d + '/' + y;
+}
+
+/* ================= Remembered settings (localStorage; every access guarded) ================= */
+const SETTINGS_PREFIX = 'avyMap.';
+const BASEMAP_IDS = ['osmHill', 'topo', 'cyclo'];
+const DEFAULTS = {mode: 'all', basemap: 'osmHill', opacity: 50};   // opacity in percent
+function loadSetting(key) {
+  try { return localStorage.getItem(SETTINGS_PREFIX + key); } catch (e) { return null; }
+}
+function saveSetting(key, val) {
+  try { localStorage.setItem(SETTINGS_PREFIX + key, String(val)); } catch (e) { /* storage unavailable: ignore */ }
+}
+function restoredMode() {
+  const v = loadSetting('mode');
+  return (v === 'slope' || v === 'all') ? v : DEFAULTS.mode;
+}
+function restoredBasemap() {
+  const v = loadSetting('basemap');
+  return BASEMAP_IDS.includes(v) ? v : DEFAULTS.basemap;
+}
+function restoredOpacity() {
+  const v = loadSetting('opacity');
+  if (v === null || !/^\d{1,3}$/.test(v)) return DEFAULTS.opacity;
+  const n = parseInt(v, 10);
+  return (n >= 0 && n <= 100 && n % 5 === 0) ? n : DEFAULTS.opacity;
+}
+
 function levelOf(v) { return v - (v % 2); }   // odd ("pockets of") rounds down
 
 /* ================= Map + basemaps ================= */
@@ -124,7 +159,7 @@ const cyclo = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}
   maxZoom: 17, zIndex: 1,
   attribution: '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases" title="CyclOSM">CyclOSM</a> | Map data &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 });
-map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen) | Forecast: <a href="' + FORECAST.url + '">Utah Avalanche Center</a>');
+map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen) | Forecast: <a href="' + uacForecastUrl(FORECAST.slug, FORECAST.date) + '" target="_blank" rel="noopener">Utah Avalanche Center</a>');
 
 /* ================= DEM loading + derived terrain ================= */
 const demCache = new Map();   // key -> {promise, data}
@@ -222,7 +257,7 @@ function loadDem(z, x, y) {
 
 /* ================= Zone polygon ================= */
 let zone = null;   // {polys: [[ring,...],...] in [lng,lat], bbox: L.LatLngBounds} or null
-let mode = 'slope';
+let mode = restoredMode();   // 'slope' | 'all'
 
 function zonePolys(geom) {
   if (geom.type === 'Polygon') return [geom.coordinates];
@@ -373,10 +408,12 @@ const HillLayer = L.GridLayer.extend({
 // Own hillshade computed from the same Terrarium DEM, multiply-blended (CSS) over OSM Standard.
 const hill = new HillLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 2, opacity: 0.8});
 hill.on('add', () => { hill.getContainer().style.mixBlendMode = 'multiply'; });
-const osmHill = L.layerGroup([osm, hill]).addTo(map);   // default basemap
+const osmHill = L.layerGroup([osm, hill]);
+const BASEMAPS = {osmHill, topo, cyclo};   // id -> layer
+BASEMAPS[restoredBasemap()].addTo(map);
 
-const DEFAULT_OPACITY = 50;   // percent; 100 = fully opaque over the basemap
-const danger = new DangerLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 5, opacity: DEFAULT_OPACITY / 100});
+let opacityPct = restoredOpacity();   // percent; 100 = fully opaque over the basemap
+const danger = new DangerLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 5, opacity: opacityPct / 100});
 zoneReady.then(() => danger.addTo(map));   // wait so tiles can be clipped from the first paint
 
 L.control.layers({
@@ -384,6 +421,10 @@ L.control.layers({
   'OSM Standard + hillshade': osmHill,
   'CyclOSM': cyclo
 }, {'Danger overlay': danger}, {collapsed: true}).addTo(map);
+map.on('baselayerchange', e => {
+  const id = BASEMAP_IDS.find(k => BASEMAPS[k] === e.layer);
+  if (id) saveSetting('basemap', id);
+});
 
 /* ================= Mode toggle ================= */
 const ModeControl = L.Control.extend({
@@ -397,6 +438,7 @@ const ModeControl = L.Control.extend({
       b.setAttribute('aria-pressed', String(id === mode));
       b.addEventListener('click', () => {
         mode = id;
+        saveSetting('mode', mode);
         btns.forEach((x, i) => x.setAttribute('aria-pressed', String(defs[i][0] === mode)));
         danger.repaint();
       });
@@ -414,12 +456,13 @@ const OpacityControl = L.Control.extend({
   onAdd() {
     const div = L.DomUtil.create('div', 'opacitybar');
     div.innerHTML = '<label for="dangerOpacity">Danger opacity</label>' +
-      '<input id="dangerOpacity" type="range" min="0" max="100" step="5" value="' + DEFAULT_OPACITY + '">' +
-      '<output for="dangerOpacity">' + DEFAULT_OPACITY + '%</output>';
+      '<input id="dangerOpacity" type="range" min="0" max="100" step="5" value="' + opacityPct + '">' +
+      '<output for="dangerOpacity">' + opacityPct + '%</output>';
     const input = div.querySelector('input'), out = div.querySelector('output');
     input.addEventListener('input', () => {
       danger.setOpacity(input.value / 100);
       out.textContent = input.value + '%';
+      saveSetting('opacity', input.value);
     });
     L.DomEvent.disableClickPropagation(div);
     L.DomEvent.disableScrollPropagation(div);
@@ -446,6 +489,7 @@ const roseCells = [];   // index 0..23, same as forecast array
 (function buildRose() {
   const svg = document.getElementById('roseSvg');
   document.getElementById('roseDate').textContent = FORECAST.date + ' (archived)';
+  document.getElementById('roseLink').href = uacForecastUrl(FORECAST.slug, FORECAST.date);   // batch 5: re-point here on date change
   for (const band of ['upper', 'mid', 'low']) {
     for (let k = 0; k < 8; k++) {
       const idx = BAND_OFFSET[band] + k;
