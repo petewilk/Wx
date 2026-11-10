@@ -11,7 +11,7 @@ Batch 2 settled the design on 2026-11-10. The live data source is parked until t
 | 1 | Prototype | implementer, qa-validator | Single-file page that paints a hardcoded archived rose (Salt Lake, 2025-02-11) on terrain computed in the browser. | Done (`8db65c6`) |
 | 2 | Grill on open topics | web-fetch (facts), architect (data layout) | Settled every open topic except the live data source; rewrote batches 3 onward. | Done |
 | 3 | UAC link and remembered settings | implementer, ux-reviewer | "Archived forecast on UAC ↗" under the date; All terrain as first-visit default; remember mode, basemap and opacity in localStorage. | Done |
-| 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Not started |
+| 4 | Forecast data files | implementer, qa-validator | Move `FORECAST` into `data/avy/uac/salt-lake/*.json` plus `index.json`, add sample days, load them with the agreed failure handling, extend deploy.sh to ship `data/avy/`. | Done |
 | 5 | Date switcher | implementer, qa-validator, ux-reviewer | Prev/next + date input over the index, `?date=` in the URL, "No forecast" states, link follows the day. | Not started |
 | 6 | Pockets hatching, tile seams, zone fallback | implementer, qa-validator | Hatch odd rose values on map and rose; fetch neighbour tiles for seam-free edges; fall back to zone id 1738. | Not started |
 | 7 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, README section, in-page note, CONTEXT.md terms, then merge. Deploy unlinked only with the user's OK. | Not started |
@@ -237,3 +237,11 @@ Only what the user put off on 2026-11-10.
   - Settings are stored under `avyMap.mode`, `avyMap.basemap` (`osmHill` | `topo` | `cyclo`) and `avyMap.opacity`. Invalid values fall back to the defaults.
   - Checked in the browser: link URL for 2025-02-11, settings survive a reload, invalid stored values fall back, a sandboxed frame with storage blocked renders with defaults, and the link fits the 150px phone panel.
   - After the ux-reviewer's review, the user had the link relabelled "Archived forecast on UAC ↗" (it wraps at phone width) and a saved 0% opacity restored as 50%.
+- **Batch 4:**
+  - Sample days in `data/avy/uac/salt-lake/`: 2024-12-24 (Low, upper W–N–E coded 3 = pockets of Moderate), 2025-01-30 (all Low), 2025-02-11 (as before), 2025-02-13 (Moderate, upper N/NE/E Considerable). 2025-02-12 is the gap day. Each was read from the archived rose PNG and checked against the bottom line.
+  - The archive PNG draws "pockets of" cells in the plain next-level color, so odd values can only come from the bottom-line text. Only 2024-12-24 has them.
+  - The upper-ring cells of the PNG can be sampled by pixel (centre 200,155 in the 400×440 image, radius 22), but the mid and low rings are drawn in 3D perspective, so read them by eye.
+  - `loadDay(date)` and `setDay(day, date, msg)` are the entry points for batch 5. `loadDay` checks the loaded index, tags requests and drops stale ones, and treats a file whose `date` doesn't match as malformed. The page already honours a valid `?date=` (no switcher or `replaceState` yet).
+  - `repaint()` clears tiles when there is no rose and reloads terrain for tiles evicted from the cache, so day changes never leave old colors.
+  - Checked in the browser: newest day by default, gap day, bad `?date=`, 404, bad JSON, short, non-integer and out-of-range roses, mislabeled file, stale response, index missing with and without `?date=`. The qa-validator checked file://, repaint ordering and the data files by reading the code.
+  - deploy.sh was reviewed but not run (it refuses off main). `./deploy.sh -n` on main after the merge is the first real check.

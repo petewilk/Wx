@@ -34,6 +34,7 @@
   #rose .ttl{font-weight:600}
   #rose .dt{color:var(--muted);margin-bottom:2px}
   #rose .uac{display:block;color:var(--accent);font-size:11px;padding:3px 0;margin-bottom:2px;white-space:nowrap;text-decoration:underline}
+  #rose .uac[hidden]{display:none}
   #rose .uac:focus-visible,.modebar button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
   #rose svg{display:block;width:100%;height:auto}
   #rose .cell{stroke:var(--muted);stroke-width:.6}
@@ -43,7 +44,7 @@
   .legend{display:flex;flex-wrap:wrap;gap:2px 8px;margin-top:4px;color:var(--muted)}
   .legend i{display:inline-block;width:10px;height:10px;border:1px solid var(--muted);vertical-align:-1px;margin-right:3px}
   #notice{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--surface);color:var(--warn);
-    border:1px solid var(--warn);border-radius:6px;padding:4px 8px;font-size:11px;max-width:70%}
+    border:1px solid var(--warn);border-radius:6px;padding:4px 8px;font-size:11px;max-width:70%;white-space:pre-line}
   #notice[hidden]{display:none}
   @media (max-width:520px){
     #rose{width:150px;padding:6px;bottom:24px}
@@ -56,13 +57,13 @@
 <body>
 <header>
   <h1>Avalanche Rose Map</h1>
-  <div class="disc">Prototype using an archived forecast (Salt Lake, 2025-02-11). Not for travel decisions.</div>
+  <div class="disc">Prototype using sample archived forecasts (Salt Lake). Not for travel decisions.</div>
 </header>
 <div id="map"></div>
 <div id="notice" hidden></div>
 <div id="rose">
   <div class="ttl">Salt Lake &middot; overall danger</div>
-  <div class="dt" id="roseDate"></div>
+  <div class="dt" id="roseDate">Loading forecast&hellip;</div>
   <a class="uac" id="roseLink" target="_blank" rel="noopener" aria-label="Archived forecast on Utah Avalanche Center (opens in new tab)">Archived forecast on UAC &#8599;</a>
   <svg id="roseSvg" viewBox="-110 -110 220 220" role="img" aria-label="Avalanche danger rose"></svg>
   <div id="readout">Hover the map</div>
@@ -72,22 +73,22 @@
 <script>
 'use strict';
 
-/* ================= Forecast data (hardcoded; replace with live source later) =================
- * Source: Utah Avalanche Center, Salt Lake zone, 2025-02-11
- *   https://utahavalanchecenter.org/forecast/salt-lake/2/11/2025
- * Encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
+/* ================= Forecast data (static JSON files, loaded at runtime) =================
+ * data/avy/{center}/{slug}/index.json        {schema, center, zone, updated_at, dates: [ascending YYYY-MM-DD]}
+ * data/avy/{center}/{slug}/{YYYY-MM-DD}.json  one day: {date, sample, overall_danger_rose: [24 ints], ...}
+ * The newest day is the last entry of index.json. ?date=YYYY-MM-DD picks another day.
+ * Rose encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
  * Each band ordered N, NE, E, SE, S, SW, W, NW.
  * Values: 0 = no rating, 2 = Low, 4 = Moderate, 6 = Considerable, 8 = High, 10 = Extreme.
  * NOTE: odd values mean "pockets of" the next-lower level; NOT handled yet -
  * they are treated as rounding down (v - v%2).
+ * Pages must be served over http(s); fetch() of the JSON files does not work from file://.
  */
-const FORECAST = {
-  zone: 'Salt Lake',
-  slug: 'salt-lake',
-  date: '2025-02-11',
-  url: 'https://utahavalanchecenter.org/forecast/salt-lake/2/11/2025',
-  rose: [6,6,6,4,4,4,4,6,  6,6,6,4,2,2,4,6,  4,4,4,2,2,2,2,4]
-};
+const ZONE = {center: 'uac', slug: 'salt-lake', name: 'Salt Lake'};
+const DATA_DIR = 'data/avy/' + ZONE.center + '/' + ZONE.slug + '/';
+const INDEX_URL = DATA_DIR + 'index.json';
+function dayUrl(date) { return DATA_DIR + date + '.json'; }
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /* ================= Constants ================= */
 const FT_PER_M = 3.28084;
@@ -109,7 +110,6 @@ const EARTH_CIRC = 40075016.686;
 const DEM_MAX_Z = 15;
 const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const ZONE_URL = 'https://api.avalanche.org/v2/public/products/map-layer/UAC';
-const ZONE_NAME = 'Salt Lake';
 const DEM_CACHE_MAX = 300;
 
 /** UAC forecast page for a zone slug + ISO date (YYYY-MM-DD); no leading zeros. Split, not Date(), to avoid TZ shifts. */
@@ -161,7 +161,15 @@ const cyclo = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}
   maxZoom: 17, zIndex: 1,
   attribution: '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases" title="CyclOSM">CyclOSM</a> | Map data &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 });
-map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen) | Forecast: <a href="' + uacForecastUrl(FORECAST.slug, FORECAST.date) + '" target="_blank" rel="noopener">Utah Avalanche Center</a>');
+map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen)');
+let uacAttrib = null;   // current "Forecast: UAC" attribution string
+function setUacAttribution(date) {   // date null -> UAC home page
+  const href = date ? uacForecastUrl(ZONE.slug, date) : 'https://utahavalanchecenter.org/';
+  const html = 'Forecast: <a href="' + href + '" target="_blank" rel="noopener">Utah Avalanche Center</a>';
+  if (uacAttrib) map.attributionControl.removeAttribution(uacAttrib);
+  map.attributionControl.addAttribution(html);
+  uacAttrib = html;
+}
 
 /* ================= DEM loading + derived terrain ================= */
 const demCache = new Map();   // key -> {promise, data}
@@ -281,11 +289,20 @@ function pointInZone(lat, lng) {
   return inside;
 }
 
+/* ================= Notice (list of lines) ================= */
+const noticeLines = [];
+function addNotice(line) {
+  noticeLines.push(line);
+  const n = document.getElementById('notice');
+  n.textContent = noticeLines.join('\n');
+  n.hidden = false;
+}
+
 const zoneReady = fetch(ZONE_URL)
   .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
   .then(fc => {
-    const feat = (fc.features || []).find(f => f.properties && f.properties.name === ZONE_NAME);
-    if (!feat) throw new Error('zone "' + ZONE_NAME + '" not found');
+    const feat = (fc.features || []).find(f => f.properties && f.properties.name === ZONE.name);
+    if (!feat) throw new Error('zone "' + ZONE.name + '" not found');
     const polys = zonePolys(feat.geometry);
     const b = L.latLngBounds([]);
     polys.forEach(p => p[0].forEach(c => b.extend([c[1], c[0]])));
@@ -294,17 +311,23 @@ const zoneReady = fetch(ZONE_URL)
   })
   .catch(err => {
     console.warn('Zone polygon unavailable:', err);
-    const n = document.getElementById('notice');
-    n.textContent = 'Zone outline unavailable (' + err.message + '); overlay shown unclipped.';
-    n.hidden = false;
+    addNotice('Zone outline unavailable (' + err.message + '); overlay shown unclipped.');
   });
 
 /* ================= Overlay painting ================= */
-// LUT: index 0..23 -> [r,g,b,baseAlpha] or null
-const LUT = FORECAST.rose.map(v => {
-  const lv = LEVELS[levelOf(v)];
-  return lv ? [lv.rgb[0], lv.rgb[1], lv.rgb[2], lv.alpha] : null;
-});
+// Current day state. rose = 24 validated ints, or null when there is nothing to paint.
+let day = null;        // loaded day JSON
+let rose = null;
+let statusMsg = 'Loading forecast\u2026';   // shown instead of a level while rose is null
+let shownDate = null;  // date the UAC links point at, or null
+// LUT: index 0..23 -> [r,g,b,baseAlpha] or null; rebuilt from rose whenever the day changes
+let LUT = [];
+function rebuildLut() {
+  LUT = rose ? rose.map(v => {
+    const lv = LEVELS[levelOf(v)];
+    return lv ? [lv.rgb[0], lv.rgb[1], lv.rgb[2], lv.alpha] : null;
+  }) : [];
+}
 
 function bandOffset(elevM) {
   if (elevM < LOW_MAX_M) return BAND_OFFSET.low;
@@ -341,6 +364,11 @@ function tileMask(canvas, coords) {
 
 function paintOverlay(canvas, coords, dem) {
   const ctx = canvas.getContext('2d');
+  if (!rose) {   // nothing to paint: clear any earlier day's colors
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, 256, 256);
+    return;
+  }
   const img = ctx.createImageData(256, 256);
   const out = img.data;
   for (let n = 0; n < 65536; n++) {
@@ -383,8 +411,11 @@ const DangerLayer = L.GridLayer.extend({
     for (const k in this._tiles) {
       const cv = this._tiles[k].el;
       if (!cv || !cv._painted) continue;
-      const e = demCache.get(demKey(cv._coords.z, cv._coords.x, cv._coords.y));
-      if (e && e.data) paintOverlay(cv, cv._coords, e.data);
+      if (!rose) { cv.getContext('2d').clearRect(0, 0, 256, 256); continue; }   // no DEM needed to clear
+      const c = cv._coords;
+      const e = demCache.get(demKey(c.z, c.x, c.y));
+      if (e && e.data) paintOverlay(cv, c, e.data);
+      else loadDem(c.z, c.x, c.y).then(d => paintOverlay(cv, c, d)).catch(err => console.warn(err));   // evicted from cache
     }
   }
 });
@@ -488,23 +519,22 @@ function wedgePath(r0, r1, a0, a1) {
 }
 
 const roseCells = [];   // index 0..23, same as forecast array
+const roseTitles = [];  // <title> elements, same indexing
 (function buildRose() {
   const svg = document.getElementById('roseSvg');
-  document.getElementById('roseDate').textContent = FORECAST.date + ' (archived)';
-  document.getElementById('roseLink').href = uacForecastUrl(FORECAST.slug, FORECAST.date);   // batch 5: re-point here on date change
   for (const band of ['upper', 'mid', 'low']) {
     for (let k = 0; k < 8; k++) {
       const idx = BAND_OFFSET[band] + k;
       const path = document.createElementNS(SVGNS, 'path');
       path.setAttribute('d', wedgePath(RINGS[band][0], RINGS[band][1], k * 45 - 22.5, k * 45 + 22.5));
       path.setAttribute('class', 'cell');
-      const lv = LEVELS[levelOf(FORECAST.rose[idx])];
-      path.setAttribute('fill', lv ? 'rgb(' + lv.rgb.join(',') + ')' : 'none');
+      path.setAttribute('fill', 'none');
       const t = document.createElementNS(SVGNS, 'title');
-      t.textContent = ASPECTS[k] + ' ' + band + ': ' + (lv ? lv.name : 'No rating');
+      t.textContent = 'No data';
       path.appendChild(t);
       svg.appendChild(path);
       roseCells[idx] = path;
+      roseTitles[idx] = {el: t, label: ASPECTS[k] + ' ' + band};
     }
   }
   [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([s, a]) => {
@@ -527,6 +557,34 @@ const roseCells = [];   // index 0..23, same as forecast array
   lg.appendChild(ring);
 })();
 
+/** Refresh the rose panel, UAC links and attribution from day / rose / statusMsg / shownDate. Reusable on date change. */
+function showDay() {
+  for (let idx = 0; idx < 24; idx++) {
+    const lv = rose ? LEVELS[levelOf(rose[idx])] : null;
+    roseCells[idx].setAttribute('fill', lv ? 'rgb(' + lv.rgb.join(',') + ')' : 'none');
+    roseTitles[idx].el.textContent = rose ? roseTitles[idx].label + ': ' + (lv ? lv.name : 'No rating') : 'No data';
+  }
+  let line = statusMsg;
+  if (rose) line = shownDate + (day && day.sample === true ? ' \u00b7 Sample data' : '');
+  document.getElementById('roseDate').textContent = line;
+  const link = document.getElementById('roseLink');
+  if (shownDate) { link.href = uacForecastUrl(ZONE.slug, shownDate); link.hidden = false; }
+  else { link.removeAttribute('href'); link.hidden = true; }
+  setUacAttribution(shownDate);
+}
+
+/** Make newDay (validated) or nothing (newDay null, msg explains) the current day, and repaint. */
+function setDay(newDay, date, msg) {
+  day = newDay;
+  rose = newDay ? newDay.overall_danger_rose : null;
+  statusMsg = msg || '';
+  shownDate = date;
+  rebuildLut();
+  showDay();
+  danger.repaint();
+  setReadout('Hover the map');   // the old readout and highlight belonged to the previous day
+}
+
 let hlIdx = -1;
 function highlight(idx) {
   if (idx === hlIdx) return;
@@ -545,7 +603,7 @@ function setReadout(txt, idx) { readout.textContent = txt; highlight(idx === und
 
 function lookup(latlng) {
   if (!map.hasLayer(danger)) { setReadout('Danger overlay is off'); return; }
-  if (!pointInZone(latlng.lat, latlng.lng)) { setReadout('Outside the Salt Lake zone'); return; }
+  if (!pointInZone(latlng.lat, latlng.lng)) { setReadout('Outside the ' + ZONE.name + ' zone'); return; }
   const z = Math.min(map.getZoom(), DEM_MAX_Z);
   const wp = map.project(latlng, z);
   const tx = Math.floor(wp.x / 256), ty = Math.floor(wp.y / 256);
@@ -557,10 +615,11 @@ function lookup(latlng) {
   const ft = Math.round(elevM * FT_PER_M).toLocaleString('en-US');
   if (slope < FLAT_DEG) { setReadout('Flat ground (<' + FLAT_DEG + '°) · ' + ft + ' ft · aspect not meaningful'); return; }
   const idx = bandOffset(elevM) + asp;
-  const lv = LEVELS[levelOf(FORECAST.rose[idx])];
-  let txt = ASPECTS[asp] + ' · ' + ft + ' ft · ' + Math.round(slope) + '° · ' + (lv ? lv.name : 'No rating');
-  if (mode === 'slope' && slope < SLOPE_RAMP_LO) txt += ' (not shaded: <' + SLOPE_RAMP_LO + '°)';
-  setReadout(txt, idx);
+  const lv = rose ? LEVELS[levelOf(rose[idx])] : null;
+  const lvTxt = rose ? (lv ? lv.name : 'No rating') : statusMsg;
+  let txt = ASPECTS[asp] + ' · ' + ft + ' ft · ' + Math.round(slope) + '° · ' + lvTxt;
+  if (rose && mode === 'slope' && slope < SLOPE_RAMP_LO) txt += ' (not shaded: <' + SLOPE_RAMP_LO + '°)';
+  setReadout(txt, rose ? idx : undefined);
 }
 
 let pending = null, raf = 0;
@@ -575,6 +634,72 @@ map.on('mouseout', () => { pending = null; setReadout('Hover the map'); });
 map.on('zoomend', () => { pending = null; });
 L.DomEvent.disableClickPropagation(document.getElementById('rose'));
 L.DomEvent.disableScrollPropagation(document.getElementById('rose'));
+
+/* ================= Forecast loader ================= */
+let reqToken = 0;        // monotonically increasing; a response from an older request is dropped
+let indexDates = null;   // validated index dates, or null if the index is unavailable
+
+/** fetch + parse JSON. Rejects with err.kind = 'fetch' (network), 'http' (non-OK) or 'parse' (bad JSON). */
+async function fetchJson(url) {
+  let r;
+  try { r = await fetch(url, {cache: 'no-cache'}); }
+  catch (e) { const err = new Error('network error'); err.kind = 'fetch'; throw err; }
+  if (!r.ok) { const err = new Error('HTTP ' + r.status); err.kind = 'http'; throw err; }
+  try { return await r.json(); }
+  catch (e) { const err = new Error('bad JSON'); err.kind = 'parse'; throw err; }
+}
+
+function validRose(r) {
+  return Array.isArray(r) && r.length === 24 && r.every(v => Number.isInteger(v) && v >= 0 && v <= 10);
+}
+
+/** Load and show one day (YYYY-MM-DD). Safe to call repeatedly; only the latest call's result is applied. */
+async function loadDay(date) {
+  const token = ++reqToken;
+  setDay(null, date, 'Loading forecast\u2026');
+  if (indexDates && !indexDates.includes(date)) { setDay(null, date, 'No forecast for this date'); return; }
+  let d;
+  try { d = await fetchJson(dayUrl(date)); }
+  catch (err) {
+    if (token !== reqToken) return;
+    console.warn('Day file', date, err);
+    setDay(null, date, err.kind === 'parse' ? 'Forecast data malformed' : 'Forecast file missing for ' + date);
+    return;
+  }
+  if (token !== reqToken) return;
+  if (!d || typeof d !== 'object' || !validRose(d.overall_danger_rose) || d.date !== date) {
+    setDay(null, date, 'Forecast data malformed');
+    return;
+  }
+  setDay(d, date, '');
+}
+
+async function initForecast() {
+  const q = new URLSearchParams(location.search).get('date');
+  const reqDate = (q !== null && DATE_RE.test(q)) ? q : null;
+  if (location.protocol === 'file:') {
+    const msg = 'Serve over http (see README)';
+    addNotice(msg);
+    setDay(null, reqDate, msg);
+    return;
+  }
+  setDay(null, reqDate, 'Loading forecast\u2026');
+  try {
+    const idx = await fetchJson(INDEX_URL);
+    if (!idx || !Array.isArray(idx.dates) || idx.dates.length === 0 ||
+        !idx.dates.every(x => typeof x === 'string' && DATE_RE.test(x))) {
+      throw new Error('bad index');
+    }
+    indexDates = idx.dates;
+  } catch (err) {
+    console.warn('Forecast index unavailable:', err);
+    addNotice('Forecast index could not be loaded.');
+  }
+  if (indexDates) loadDay(reqDate || indexDates[indexDates.length - 1]);
+  else if (reqDate) loadDay(reqDate);
+  else setDay(null, null, 'No forecast available');
+}
+initForecast();
 </script>
 </body>
 </html>
