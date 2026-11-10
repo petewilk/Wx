@@ -217,9 +217,11 @@
   html:not(.light) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85)}
   #mapMsg{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:500;max-width:calc(100% - 32px);background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;text-align:center;pointer-events:none}
   #mapBox.nomap #map{display:none}
-  #mapBox.nomap #mapMsg{position:static;transform:none;max-width:none;border:0;padding:16px;text-align:left;pointer-events:auto}
+  #mapBox.nomap #mapMsg{color:var(--text);position:static;transform:none;max-width:none;border:0;padding:16px;text-align:left;pointer-events:auto}
   .wxmk{background:none;border:0}
   .wxmk .mkd{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;margin:-2px 0 0 -2px}
+  .wxmk .mkd::before,.wxmk .mkb::before{content:'';position:absolute;inset:-14px;background:transparent}
+  .wxmk .mke{box-shadow:0 0 0 1px var(--text),0 0 0 4px var(--danger)}
   #mapDays{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;background:var(--surface);border-bottom:1px solid var(--border);max-height:112px;overflow-y:auto}
   #mapDays[hidden]{display:none}
   .mdb{border:1px solid var(--border);border-radius:6px;padding:3px 8px;display:flex;flex-direction:column;align-items:center;gap:0;font-size:10px;line-height:1.25;color:var(--muted);background:var(--surface);cursor:pointer;min-width:44px}
@@ -227,14 +229,19 @@
   .mdb:hover{background:rgba(var(--accent-rgb),.1)}
   .mdb[aria-pressed=true]{background:rgba(var(--accent-rgb),.22);box-shadow:inset 0 -2px 0 var(--accent)}
   .mdb:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-  .wxmk .mkb{position:absolute;left:-9px;top:-9px;min-width:14px;height:14px;padding:0 2px;border-radius:9px;background:var(--accent);color:#fff;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;font:700 10px/14px system-ui,monospace;text-align:center;margin:-2px 0 0 -2px}
+  .wxmk .mkb{position:absolute;left:-9px;top:-9px;min-width:14px;height:14px;padding:0 2px;border-radius:9px;background:var(--accent);color:#000;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;font:700 10px/14px system-ui,monospace;text-align:center;margin:-2px 0 0 -2px}
+  html.light .wxmk .mkb{color:#fff}
   .wxmk .mkarch{position:absolute;overflow:visible;pointer-events:auto}
   .wxmk .mkn.mkc{top:30px}
-  .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none}
+  .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none;max-width:150px;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
   #map{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   .wxpop .leaflet-popup-content-wrapper,.wxpop .leaflet-popup-tip{background:var(--surface);color:var(--text);border:1px solid var(--border)}
   .wxpop .leaflet-popup-content{margin:10px 12px;font:11px/1.4 system-ui,monospace;min-width:190px}
   .wxpop a.leaflet-popup-close-button{color:var(--muted)}
+  html:not(.light) .leaflet-bar a{background:var(--surface);color:var(--text);border-bottom-color:var(--border)}
+  html:not(.light) .leaflet-bar{border-color:var(--border)}
+  html:not(.light) .leaflet-control-attribution{background:var(--surface);color:var(--text)}
+  html:not(.light) .leaflet-control-attribution a{color:var(--accent)}
   .mpop .pt{font-size:13px;font-weight:700;padding-right:14px}
   .mpop .pt .pr{color:var(--accent);margin-right:4px}
   .mpop .ptags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
@@ -280,6 +287,17 @@
     .gfx .gn1 .ren{font-size:12px;padding:1px 2px}
     .gfx .gn1 .rm{font-size:16px;padding:0 2px}
     .gfx .cnb{font-size:12px}
+    #mapDays{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none}
+    .mdb{flex:0 0 auto}
+  }
+  @media (pointer:coarse),(max-width:600px){
+    .mpop button{min-height:40px;padding:8px 14px;font-size:13px}
+    .mpop .ptags{gap:8px}
+    .mpop .pact{gap:8px}
+    .mpop .pt{padding-right:28px}
+    .mdb{min-height:40px}
+    .wxpop a.leaflet-popup-close-button{width:40px;height:40px;font-size:22px;line-height:40px;padding:0}
+    .wxpop .leaflet-popup-content{font-size:13px;max-height:55vh;overflow:auto}
   }
 </style>
 </head>
@@ -373,7 +391,7 @@
     <div class="cards" id="cards"></div>
   </div>
 </div>
-<div id="mapDays" hidden></div>
+<div id="mapDays" role="group" aria-label="Day" hidden></div>
 <div id="mapBox" hidden>
   <div id="map"></div>
   <div id="mapMsg" role="status" hidden></div>
@@ -635,8 +653,12 @@ var MAPS = {
   popP: null,       // place whose popup is open, null for the add menu
   press: null,      // long-press state {id, x, y, timer, latlng}
   touchAt: 0,       // time of the last touch pointerdown, to ignore the native contextmenu that follows a touch
+  adding: false,    // a name lookup for a map add is in flight
+  tileErr: false,   // a tile failed to load
+  sizeKey: '',      // strip height and map top at the last mapSize
   pressedAt: 0      // time a long-press fired, to swallow the click that can follow it
 };
+var MAP_HINT = 'Right-click or long-press the map to add a place.', TILE_MSG = 'Map tiles could not load. Markers and ranking still work.';
 var MAP_PRESS = { ms: 550, movePx: 10 };   // long-press: hold time (ms) and movement that cancels it (CSS px)
 var MAP_ARCH = { size: 50, r: 19, w: 7, span: 200, gap: 4 };   // pill arch: SVG size, radius, pill thickness (px), arc span and pill gap (degrees)
 var MAP_FIT = { padding: [40, 40], maxZoom: 11 };   // fitBounds options: maxZoom stops a lone place zooming to street level
@@ -1283,6 +1305,7 @@ function loadPlace(p) {
   renderCardState(p);
   renderRow(p);
   mapUpdatePlace(p);
+  mapPopupRefresh();
   return limited(function() {
     if (seq !== p.seq || p.removed) return Promise.resolve(null);   // superseded while queued
     return fetchJson(forecastUrl(p));
@@ -3039,9 +3062,9 @@ function syncViewBar() {
     var span = da && db ? dayLabel(da) + (TARGET.b > TARGET.a ? ' – ' + dayLabel(db) : '') : 'selected days';
     info.innerHTML = 'Ranking <b>' + esc(span) + '</b> by <b>' + esc(name) + '</b>' +
       (TARGET.b > TARGET.a ? ' (span totals for precipitation and snow, maxima for wind and highs)' : '') +
-      (VIEW === 'map' ? '. Pick a day above; shift-click (or Span, then tap) a second day for a range.' : '. Drag reorder is off while ranked.');
+      (VIEW === 'map' ? (MAPS.ok ? '. Pick a day above; shift-click (or Span, then tap) a second day for a range. ' + MAP_HINT : '.') : '. Drag reorder is off while ranked.');
   } else if (VIEW === 'map') {
-    info.textContent = 'Every place that matches the Activity filter is on the map.';
+    info.textContent = 'Every place that matches the Activity filter is on the map.' + (MAPS.ok ? ' ' + MAP_HINT : '');
   } else {
     info.textContent = 'Click a day heading to rank places for that day; shift-click (or Span, then tap) a second heading for a range. Click a row for its meteogram.';
   }
@@ -3215,6 +3238,9 @@ function fmtCoord(lat, lon) {
          Math.abs(lon).toFixed(2) + '°' + (lon >= 0 ? 'E' : 'W');
 }
 
+// True when the last refresh failed (the row may still hold older data)
+function placeFailed(p) { return !!p.err && p.seq && p.attemptAt && !(p.fetchedAt >= p.attemptAt); }
+
 // Header, error banner and loading text for the card's current status
 function renderCardState(p) {
   var e = p.el;
@@ -3227,7 +3253,7 @@ function renderCardState(p) {
   if (p.fetchedAt) { var d = new Date(p.fetchedAt); bits.push('updated ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes())); }
   if (p.data && DAYS >= ENS_MIN_DAYS && p.ensStatus === 'error') bits.push('ensemble unavailable');
   e.meta.textContent = bits.join(' · ');
-  var failed = !!p.err && p.seq && p.attemptAt && !(p.fetchedAt >= p.attemptAt);
+  var failed = placeFailed(p);
   e.stale.hidden = !(failed && p.data);   // the row keeps showing older data; the no-data case is drawn by renderRow
   e.err.hidden = !failed;
   e.msg.textContent = failed ? (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + p.err : '';
@@ -3248,7 +3274,7 @@ function syncViewChrome() {
   document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   document.getElementById('groupGrp').hidden = map;
   document.getElementById('mapBox').hidden = !map;
-  document.getElementById('mapDays').hidden = !map;
+  document.getElementById('mapDays').hidden = !map || !MAPS.ok;
 }
 
 // Message over the map (or in its place when Leaflet is missing); null hides it
@@ -3263,10 +3289,20 @@ function mapInit() {
   try {
     MAPS.map = L.map('map', { scrollWheelZoom: true, zoomSnap: 0.25 });
     MAPS.map.setView(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom);   // markers need a view before the first fit
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    var tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(MAPS.map);
+    tiles.on('tileerror', function() {
+      MAPS.tileErr = true;
+      if (document.getElementById('mapMsg').hidden) mapMessage(TILE_MSG);
+    });
+    tiles.on('tileload', function() {
+      if (!MAPS.tileErr) return;
+      MAPS.tileErr = false;
+      if (document.getElementById('mapMsg').textContent === TILE_MSG) mapMessage(null);
+    });
+    MAPS.map.on('movestart dragstart', mapPressCancel);
     MAPS.layer = L.layerGroup().addTo(MAPS.map);
     MAPS.map.on('zoomend moveend', mapCollapse);
     MAPS.map.on('popupclose', function(e) { if (e.popup === MAPS.pop) { MAPS.pop = null; MAPS.popP = null; } });
@@ -3295,12 +3331,14 @@ function mapEnter() {
   syncViewChrome();
   if (!MAPS.ok) {
     document.getElementById('mapBox').classList.add('nomap');
+    document.getElementById('mapDays').hidden = true;
     mapMessage('The map could not load (Leaflet is unavailable, check your connection). Graphic and Table still work.');
     return;
   }
   mapInit();
   if (!MAPS.ok) {   // mapInit failed
     document.getElementById('mapBox').classList.add('nomap');
+    document.getElementById('mapDays').hidden = true;
     mapMessage('The map could not start. Graphic and Table still work.');
     return;
   }
@@ -3317,9 +3355,13 @@ function mapLeave() {
 }
 
 // Map height: the rest of the window below its top edge, never under MAP_MIN_H
+function mapSizeKey() {
+  return document.getElementById('mapDays').offsetHeight + '|' + Math.round(document.getElementById('mapBox').getBoundingClientRect().top + window.pageYOffset);
+}
 function mapSize() {
   if (!mapActive()) return;
   var box = document.getElementById('mapBox'), el = document.getElementById('map');
+  MAPS.sizeKey = mapSizeKey();
   var top = box.getBoundingClientRect().top + window.pageYOffset;
   var h = Math.max(MAP_MIN_H, Math.floor(window.innerHeight - top - MAP_BOTTOM_PAD));
   el.style.height = h + 'px';
@@ -3368,7 +3410,8 @@ function mapIconHtml(p, mode, P) {
     var st = mapMarkerState(p);
     return archSvg(st === 'ok' ? spanThirds(p, TARGET) : null, P, st, p.mapRank) + name;
   }
-  var mark = p.mapRank != null ? '<div class="mkb">' + p.mapRank + '</div>' : '<div class="mkd"></div>';
+  var ec = mapMarkerState(p) === 'error' ? ' mke' : '';
+  var mark = p.mapRank != null ? '<div class="mkb' + ec + '">' + p.mapRank + '</div>' : '<div class="mkd' + ec + '"></div>';
   return mode === 'full' ? mark + name : mark;
 }
 
@@ -3433,6 +3476,7 @@ function mapSync() {
   if (!mapActive()) return;
   mapRanks();
   renderMapDays();
+  if (MAPS.sizeKey !== mapSizeKey()) mapSize();   // the day strip changes height after it is filled
   var vis = 0, P = pal();
   PLACES.forEach(function(p) {
     if (!mapVisible(p)) {
@@ -3455,7 +3499,7 @@ function mapSync() {
   });
   mapHoverOff();
   mapMessage(!PLACES.length ? 'No places yet. Add a zip code, place name, or lat, lon above.'
-    : !vis ? 'No places have the selected activity tags.' : null);
+    : !vis ? 'No places have the selected activity tags.' : MAPS.tileErr ? TILE_MSG : null);
   if (MAPS.fitPending) { MAPS.fitPending = false; mapFit(); }
   mapCollapse();
   mapPopupRefresh();
@@ -3520,6 +3564,10 @@ function renderMapDays() {
   if (box.wxHtml === html) return;   // unchanged: keep focus
   box.wxHtml = html;
   box.innerHTML = html;
+  var on1 = box.querySelector('.mdb[aria-pressed=true]');   // keep the selection visible when the strip scrolls sideways
+  if (on1 && box.scrollWidth > box.clientWidth) {
+    box.scrollLeft = on1.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - (box.clientWidth - on1.offsetWidth) / 2;
+  }
 }
 
 // Like onHeaderClick, but never clears TARGET: clicking the selected day narrows to that one day
@@ -3587,10 +3635,11 @@ function mapPopupHtml(p) {
           (v == null ? '–' : Math.round(v)) + '</span>';
       }).join('') + '</div>';
     }
-  } else if (st !== 'error') s += '<div class="pday">No forecast for the selected day.</div>';
-  if (st === 'error') s += '<div class="perr">' + (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + esc(p.err || 'unknown error') + '</div>';
+  } else if (!failed) s += '<div class="pday">No forecast for the selected day.</div>';
+  var failed = placeFailed(p) || st === 'error';
+  if (failed) s += '<div class="perr">' + (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + esc(p.err || 'unknown error') + '</div>';
   var acts = '';
-  if (st === 'error') acts += '<button type="button" data-act="retry">Retry</button>';
+  if (failed) acts += '<button type="button" data-act="retry">Retry</button>';
   if (p !== MAPS.exempt) acts += '<button type="button" data-act="open">Open forecast</button>';   // that row is hidden by the filter until tagged
   return s + (acts ? '<div class="pact">' + acts + '</div>' : '');
 }
@@ -3618,7 +3667,7 @@ function mapPopupOffset(p) { return L.point(0, placeIsClimb(p) && p.mkMode === '
 function mapOpenPopup(p, pan) {
   if (!mapActive() || !p.mk) return;
   mapHoverOff();
-  var pop = L.popup({ className: 'wxpop', offset: mapPopupOffset(p), autoPan: !!pan, maxWidth: 280, closeOnClick: true })
+  var pop = L.popup({ className: 'wxpop', offset: mapPopupOffset(p), autoPan: !!pan, autoPanPaddingTopLeft: [10, 10], autoPanPaddingBottomRight: [10, 40], maxWidth: 280, closeOnClick: true })
     .setLatLng(p.mk.getLatLng()).setContent(mapPopupEl(p));
   pop.openOn(MAPS.map);   // closes any popup that was open first
   MAPS.pop = pop;
@@ -3668,17 +3717,20 @@ function mapAddMenu(latlng) {
 // or the Activity filter changes (MAPS.exempt), and has no rank number
 function mapAddHere(latlng) {
   var ll = latlng.wrap(), lat = roundTo(ll.lat, 4), lon = roundTo(ll.lng, 4);
+  if (MAPS.adding) return;   // a name lookup is already in flight
   if (PLACES.length >= MAX_PLACES) { setStatus('Up to ' + MAX_PLACES + ' places', true); return; }
+  MAPS.adding = true;
   setStatus('Looking up place name…');
   var coord = lat + ', ' + lon;
   reverseLabel(lat, lon)
     .then(function(n) { return 'Near ' + n; }, function() { return coord + ' (no place found)'; })
     .then(function(label) {
+      MAPS.adding = false;
       var p = addPlace({ lat: lat, lon: lon, label: label });   // no mapRequestFit: the view stays put
       if (!p || !mapActive()) return;
       MAPS.exempt = p;
       mapSync();
-      mapOpenPopup(p, false);
+      mapOpenPopup(p, true);   // autoPan keeps the popup visible; the map is not refit
     });
 }
 
@@ -3696,6 +3748,7 @@ function mapPressStart(e) {
     MAPS.press = null;
     if (!ll) return;
     MAPS.pressedAt = Date.now();
+    if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) { /* not permitted */ } }
     mapAddMenu(ll);
   }, MAP_PRESS.ms);
 }
@@ -3714,7 +3767,7 @@ function mapDrop(p) {
   MAPS.layer.removeLayer(p.mk);
   p.mk = null;
   p.mkHtml = '';
-  if (MAPS.map) MAPS.map.closePopup();
+  if (MAPS.map && MAPS.popP === p) MAPS.map.closePopup();
 }
 
 function renderAll() {

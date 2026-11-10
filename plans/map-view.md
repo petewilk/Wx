@@ -13,7 +13,7 @@ Each batch runs in its own new Claude Code session. Batches run **in order**, be
 | 3 | Day picker and ranking | implementer, qa-validator | Add a day picker that shares the selected day with the other views, default to today, rank across tag groups on Map, and average the thirds over a span. | Done |
 | 4 | Arch markers | implementer | Draw the sun-path pill arch, rank centers, numbered badges, loading and error states, and the overlap collapse. | Done |
 | 5 | Popup and map adds | implementer | Add the popup with tag chips and Open forecast, Retry, and adding a place with right-click or long-press. A new place shows until it is tagged. | Done |
-| 6 | Review and QA | ux-reviewer, qa-validator, implementer | Review usability, check edge cases on phone and in dark mode, and fix what they find. | Not started |
+| 6 | Review and QA | ux-reviewer, qa-validator, implementer | Review usability, check edge cases on phone and in dark mode, and fix what they find. | Done |
 | 7 | Docs and ship | doc-writer | Write the README and in-page notes, update CONTEXT.md, and merge to main. Deploying waits for your OK. | Not started |
 
 Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
@@ -335,3 +335,8 @@ _Each batch adds anything the next ones need to know here: deviations, open issu
   - Tagging the map-added place with a tag the filter excludes (e.g. Run under a Climb filter) hides it and closes its popup, per the exemption rule.
   - If you leave Map while the name lookup is in flight, the place is still added but no exempt is set and no popup opens.
   - Checked with headless Chrome over synthetic events (right-click, long-press, cancel paths, light and dark, unit switch) and a final browser-pane check with no console errors. Not checked: real touch, iOS Safari, 375 px width, the 30-place cap message in the add menu (for batch 6).
+- **Batch 6:** ux-reviewer and qa-validator found no blocking defects; the implementer fixed what they confirmed. Notes:
+  - QA edge cases all passed (0/1/30 places, no Climb, all filtered, forecast failure, 16-day span, `setDays` shrink, unit switch, Leaflet blocked, Map saved in prefs, 375 px with no horizontal scroll).
+  - Fixed: map height after the day picker fills (M1), Retry feedback in the popup (M2), failed refresh with old data now shows an error and Retry via a shared `placeFailed` (M3), no-Leaflet strip and help text (M4), `mapDrop` only closes its own popup (M5), double-add guard, 40 px tap targets on touch/phone, single-row scrolling day strip on phones, badge contrast in dark mode, larger hit areas on dots and badges, error ring on non-climb markers, dark-mode Leaflet controls, tile-failure message, long-press cancel on drag and vibrate, add-place hint text, autoPan on map adds, `.mkn` max width.
+  - **Open, for your call:** (1) at 375 px the controls take about 600 px, so the map starts below the first screen (the 400 px minimum is in the spec); (2) a place added by search or location that the Activity filter hides shows no marker, with no exemption (matches the rows); (3) markers aren't keyboard-focusable (`keyboard:false`).
+  - Not exercised: real touch and iOS Safari, the tile-failure message, the red error ring on non-climb markers, the day strip scroll-into-view with an overflowing strip, autoPan near the bottom edge.
