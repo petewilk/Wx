@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Wx Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root {
     --bg:#0d1117; --surface:#161b22; --border:#21262d;
@@ -208,6 +210,52 @@
   .leg i.box{height:8px;margin-bottom:1px;opacity:.7}
   .note{padding:10px 20px;font-size:10px;line-height:1.5;color:var(--muted);max-width:90ch}
   .empty{color:var(--muted);font-size:11px;padding:16px}
+  /* Map view: fills the rest of the window height (mapSize sets the pixel height, never below 400) */
+  #mapBox{position:relative;background:var(--surface);border-bottom:1px solid var(--border)}
+  #map{width:100%;height:400px;min-height:400px;background:var(--surface);z-index:0}
+  .leaflet-container{font-family:system-ui,monospace}
+  html:not(.light) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85)}
+  #mapMsg{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:500;max-width:calc(100% - 32px);background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;text-align:center;pointer-events:none}
+  #mapBox.nomap #map{display:none}
+  #mapBox.nomap #mapMsg{color:var(--text);position:static;transform:none;max-width:none;border:0;padding:16px;text-align:left;pointer-events:auto}
+  .wxmk{background:none;border:0}
+  .wxmk .mkd{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;margin:-2px 0 0 -2px}
+  .wxmk .mkd::before,.wxmk .mkb::before{content:'';position:absolute;inset:-14px;background:transparent}
+  .wxmk .mke{box-shadow:0 0 0 1px var(--text),0 0 0 4px var(--danger)}
+  #mapDays{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;background:var(--surface);border-bottom:1px solid var(--border);max-height:112px;overflow-y:auto}
+  #mapDays[hidden]{display:none}
+  .mdb{border:1px solid var(--border);border-radius:6px;padding:3px 8px;display:flex;flex-direction:column;align-items:center;gap:0;font-size:10px;line-height:1.25;color:var(--muted);background:var(--surface);cursor:pointer;min-width:44px}
+  .mdb b{font-size:12px;color:var(--text)}
+  .mdb:hover{background:rgba(var(--accent-rgb),.1)}
+  .mdb[aria-pressed=true]{background:rgba(var(--accent-rgb),.22);box-shadow:inset 0 -2px 0 var(--accent)}
+  .mdb:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .wxmk .mkb{position:absolute;left:-9px;top:-9px;min-width:14px;height:14px;padding:0 2px;border-radius:9px;background:var(--accent);color:#000;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--text);box-sizing:content-box;font:700 10px/14px system-ui,monospace;text-align:center;margin:-2px 0 0 -2px}
+  html.light .wxmk .mkb{color:#fff}
+  .wxmk .mkarch{position:absolute;overflow:visible;pointer-events:auto}
+  .wxmk .mkn.mkc{top:30px}
+  .wxmk .mkn{position:absolute;left:0;top:9px;transform:translateX(-50%);white-space:nowrap;font:600 10px system-ui,monospace;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 4px;opacity:.92;pointer-events:none;max-width:150px;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
+  #map{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  .wxpop .leaflet-popup-content-wrapper,.wxpop .leaflet-popup-tip{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+  .wxpop .leaflet-popup-content{margin:10px 12px;font:11px/1.4 system-ui,monospace;min-width:190px}
+  .wxpop a.leaflet-popup-close-button{color:var(--muted)}
+  html:not(.light) .leaflet-bar a{background:var(--surface);color:var(--text);border-bottom-color:var(--border)}
+  html:not(.light) .leaflet-bar{border-color:var(--border)}
+  html:not(.light) .leaflet-control-attribution{background:var(--surface);color:var(--text)}
+  html:not(.light) .leaflet-control-attribution a{color:var(--accent)}
+  .mpop .pt{font-size:13px;font-weight:700;padding-right:14px}
+  .mpop .pt .pr{color:var(--accent);margin-right:4px}
+  .mpop .ptags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+  .mpop button{font:inherit;font-size:11px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:12px;padding:3px 10px;cursor:pointer;min-height:26px}
+  .mpop button:hover{background:rgba(var(--accent-rgb),.1)}
+  .mpop button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
+  html.light .mpop button[aria-pressed=true]{color:#fff}
+  .mpop .pday{color:var(--muted);margin-bottom:2px}
+  .mpop .pst{display:flex;flex-wrap:wrap;gap:2px 12px}
+  .mpop .pth{display:flex;gap:6px;margin-top:6px}
+  .mpop .pth span{flex:1;text-align:center;border-radius:4px;padding:1px 4px;font-weight:700;font-variant-numeric:tabular-nums}
+  .mpop .pth small{display:block;font-weight:400;font-size:9px;opacity:.85}
+  .mpop .perr{color:var(--danger);margin-top:6px}
+  .mpop .pact{display:flex;gap:6px;margin-top:8px}
   footer{padding:10px 20px 20px;font-size:10px;color:var(--muted)}
   footer a{color:var(--accent);text-decoration:none}
   footer a:hover{text-decoration:underline}
@@ -239,6 +287,17 @@
     .gfx .gn1 .ren{font-size:12px;padding:1px 2px}
     .gfx .gn1 .rm{font-size:16px;padding:0 2px}
     .gfx .cnb{font-size:12px}
+    #mapDays{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none}
+    .mdb{flex:0 0 auto}
+  }
+  @media (pointer:coarse),(max-width:600px){
+    .mpop button{min-height:40px;padding:8px 14px;font-size:13px}
+    .mpop .ptags{gap:8px}
+    .mpop .pact{gap:8px}
+    .mpop .pt{padding-right:28px}
+    .mdb{min-height:40px}
+    .wxpop a.leaflet-popup-close-button{width:40px;height:40px;font-size:22px;line-height:40px;padding:0}
+    .wxpop .leaflet-popup-content{font-size:13px;max-height:55vh;overflow:auto}
   }
 </style>
 </head>
@@ -287,6 +346,7 @@
     <div class="seg" id="viewSeg" role="group" aria-label="Overview style">
       <button type="button" data-view="graphic" aria-pressed="true" title="Timeline strip per place">Graphic</button>
       <button type="button" data-view="table" aria-pressed="false" title="Text grid per day">Table</button>
+      <button type="button" data-view="map" aria-pressed="false" title="Places on a map">Map</button>
     </div>
   </div>
   <div class="grp" id="rowhGrp">
@@ -299,7 +359,7 @@
     <label>Activity</label>
     <div class="chips" id="filterChips" role="group" aria-label="Show only places with these activity tags"></div>
   </div>
-  <div class="grp">
+  <div class="grp" id="groupGrp">
     <button type="button" class="tog" id="groupBtn" aria-pressed="false" title="Group rows under each place's first activity tag">Group by tag</button>
   </div>
   <div class="grp">
@@ -331,6 +391,11 @@
     <div class="cards" id="cards"></div>
   </div>
 </div>
+<div id="mapDays" role="group" aria-label="Day" hidden></div>
+<div id="mapBox" hidden>
+  <div id="map"></div>
+  <div id="mapMsg" role="status" hidden></div>
+</div>
 <div class="tip" id="tip" hidden></div>
 
 <div class="note" id="noteGfx">
@@ -349,8 +414,15 @@
   prevailing direction (amber above 15&nbsp;mph / 25&nbsp;km/h, red above 25&nbsp;mph / 40&nbsp;km/h), new snow depth and the mean freezing level in daylight. Places tagged Climb add three pills (morning, midday, afternoon) colored by the
   Climbing Index, and a Climb column with the mean index of the ranked days.
 </div>
+<div class="note" id="noteMap">
+  Map view: the day buttons above the map set the day shared with the other views (shift-click a second day, or use Span, for a range).
+  Rank numbers are across all places and ignore grouping. Places tagged Climb show an arch of three pills (morning, midday, afternoon)
+  around the rank; each pill is the mean of that third over the selected span. Grey pills mean loading or no data, and &ldquo;!&rdquo; means the load
+  failed (use Retry in the popup). Overlapping places collapse to small rank badges; hover one to see the full marker. Click a place for its
+  popup with tag chips and Open forecast. Right-click, or long-press on a phone, to add a place there; it stays shown until you tag it.
+</div>
 <div class="note">
-  Both views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
+  Graphic and Table views: click a day heading to rank places for that day, shift-click a second heading (or use Span) for a range; ranges use
   total precipitation and snow, the highest wind or high, and the mean daylight cloud cover (Sunniest / Cloudiest). Clicking a row opens its full meteogram.
   Grouping files a place under its first activity tag. The meteogram&rsquo;s precipitation panel also draws the rolling 24-hour total (liquid-water equivalent, trailing 24&nbsp;h ending at each point,
   computed from hourly data) on its own scale, labeled in the leftmost axis column. The precipitation bar and 24-hour scales are shared by every place (in the strips too), so a wetter place looks wetter. Precipitation bars are liquid-water equivalent: snow is drawn as its melted water, and the readout shows snow depth
@@ -442,7 +514,7 @@ var CLIMB_BANDS = {
 };
 var CLIMB_PILLS = { h: 6, gap: 1, maxW: 24, sep: 2, pad: 5 };   // graphic view: pill row above the strip of a Climb place, CSS px (+ gap below); pill max width, spacing, side padding in the day column
 var THIRD_NAMES = ['morning', 'midday', 'afternoon'];
-var VIEWS = ['graphic', 'table'];   // overview styles; the first is the default
+var VIEWS = ['graphic', 'table', 'map'];   // overview styles; the first is the default
 var KMH_PER_MPH = 1.609344;
 var CLIMB_DEBUG = (/[?&]climbdebug=(\d{1,2})(?:&|$)/.exec(location.search) || [])[1];   // dev only: ?climbdebug=N requests N past days and tables the daily index
 var PAST_DAYS = CLIMB_DEBUG != null ? Math.min(92, +CLIMB_DEBUG) : 3;   // extra days requested before today, only to seed the rolling 24 h precipitation window and the climbing wetness bucket
@@ -575,7 +647,30 @@ var cursorT = null;       // hovered instant (ms since epoch), shared by all car
 var viewT = null;         // instant at the left edge of the last-scrolled card
 var searchSeq = 0;
 var pending = 0;
-var VIEW = VIEWS[0];      // overview style: 'graphic' strips or 'table' text cells
+var VIEW = VIEWS[0];      // overview style: 'graphic' strips, 'table' text cells or 'map'
+// Map view state (see plans/map-view.md); every hook is a no-op unless VIEW === 'map' && MAPS.ok
+var MAPS = {
+  ok: typeof L !== 'undefined',   // Leaflet loaded (the CDN can fail)
+  map: null,        // L.Map, created on first entry to Map view (its container must be visible)
+  layer: null,      // L.layerGroup holding every place marker
+  fitPending: true, // fit visible places at the next mapSync
+  exempt: null,     // place added from the map, shown even when the Activity filter would hide it (batch 5)
+  ghost: null,      // full marker shown while hovering a collapsed one
+  pop: null,        // the open L.popup (place popup or "Add place here" menu)
+  popP: null,       // place whose popup is open, null for the add menu
+  press: null,      // long-press state {id, x, y, timer, latlng}
+  touchAt: 0,       // time of the last touch pointerdown, to ignore the native contextmenu that follows a touch
+  adding: false,    // a name lookup for a map add is in flight
+  tileErr: false,   // a tile failed to load
+  sizeKey: '',      // strip height and map top at the last mapSize
+  pressedAt: 0      // time a long-press fired, to swallow the click that can follow it
+};
+var MAP_HINT = 'Right-click or long-press the map to add a place.', TILE_MSG = 'Map tiles could not load. Markers and ranking still work.';
+var MAP_PRESS = { ms: 550, movePx: 10 };   // long-press: hold time (ms) and movement that cancels it (CSS px)
+var MAP_ARCH = { size: 50, r: 19, w: 7, span: 200, gap: 4 };   // pill arch: SVG size, radius, pill thickness (px), arc span and pill gap (degrees)
+var MAP_FIT = { padding: [40, 40], maxZoom: 11 };   // fitBounds options: maxZoom stops a lone place zooming to street level
+var MAP_MIN_H = 400, MAP_BOTTOM_PAD = 24;           // CSS px: minimum map height, space kept below it
+var MAP_DEFAULT_VIEW = { center: [39, -98], zoom: 3 };   // only until the first fit
 var ROW_H = ROWH.def;     // graphic row height, CSS px
 var SPPH = MIN_SPPH.short;   // strip pixels per hour (graphic view)
 var SORT = 'dry';         // ranking metric
@@ -708,7 +803,8 @@ function onAdd() {
   resolveQuery(q)
     .then(function(loc) {
       if (seq !== searchSeq) return;
-      if (addPlace(loc)) document.getElementById('locInput').value = '';
+      var np = addPlace(loc);
+      if (np) { document.getElementById('locInput').value = ''; mapAddedFromForm(np); }
     })
     .catch(function(e) {
       if (seq !== searchSeq) return;
@@ -733,7 +829,8 @@ function useMyLocation() {
             function()  { return 'My location (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')'; })
       .then(function(label) {
         if (seq !== searchSeq) return;
-        addPlace({ lat: lat, lon: lon, label: label });
+        var np = addPlace({ lat: lat, lon: lon, label: label });
+        if (np) mapAddedFromForm(np);
       });
   }, function(err) {
     if (seq !== searchSeq) return;
@@ -906,7 +1003,7 @@ function addPlace(loc) {
   document.getElementById('cards').appendChild(buildCard(p));
   applyOrder();
   loadPlace(p);
-  return true;
+  return p;
 }
 
 function removePlace(p) {
@@ -915,6 +1012,7 @@ function removePlace(p) {
   if (p.el && p.el.root.parentNode) p.el.root.parentNode.removeChild(p.el.root);
   savePlaces();
   setStatus('');
+  mapDrop(p);
   renderAll();   // the Climb column may go away, and the shared precipitation scale may shrink
   updateStamp();
 }
@@ -922,7 +1020,8 @@ function removePlace(p) {
 function makePlace(loc) {
   return { lat: loc.lat, lon: loc.lon, label: loc.label, status: 'loading', err: '', ensStatus: 'idle',
            data: null, ens: null, fetchedAt: 0, attemptAt: 0, seq: 0, ensSeq: 0, el: null, layout: null,
-           tags: loc.tags ? loc.tags.slice() : [], open: false, rank: null };
+           tags: loc.tags ? loc.tags.slice() : [], open: false, rank: null,
+           mk: null, mkHtml: '', mkMode: 'full', mapRank: null };
 }
 
 // Placeholder lines under the rows: no places at all, or none matching the tag filter
@@ -1214,6 +1313,8 @@ function loadPlace(p) {
   syncRefreshBtn();
   renderCardState(p);
   renderRow(p);
+  mapUpdatePlace(p);
+  mapPopupRefresh();
   return limited(function() {
     if (seq !== p.seq || p.removed) return Promise.resolve(null);   // superseded while queued
     return fetchJson(forecastUrl(p));
@@ -2720,6 +2821,7 @@ var ICON_PX = 28;
 function renderRow(p, P) {
   var e = p.el;
   if (!e) return;
+  if (VIEW === 'map') return;   // the rows are hidden in Map view
   var host = e.cells;
   e.cellEls = [];
   renderClimbCol(p, P || (VIEW === 'graphic' ? stripPal() : pal()));
@@ -2821,6 +2923,17 @@ function placeVisible(p) {
   return !TAGFILTER.length || p.tags.some(function(t) { return TAGFILTER.indexOf(t) >= 0; });
 }
 
+// Sorts a list by the ranked day's key and numbers it; equal keys share a rank (1, 2, 2, 4)
+// Without a TARGET the order is unchanged and every rank is null. Returns [{p, k, rank}] in display order
+function rankList(list) {
+  var items = list.map(function(p, i) { return { p: p, i: i, k: TARGET ? sortKey(p) : null, rank: null }; });
+  if (TARGET) items.sort(function(x, y) { return cmpKey(x.k, y.k) || x.i - y.i; });
+  items.forEach(function(it, i) {
+    it.rank = !TARGET || !it.k ? null : (i && cmpKey(items[i - 1].k, it.k) === 0 ? items[i - 1].rank : i + 1);
+  });
+  return items;
+}
+
 // Order rows: filter by tag, optionally group, then rank within each group when a day is targeted
 // In the graphic view `animate` slides rows to their new positions (FLIP: measure, move in the DOM, invert with a transform, release it)
 function applyOrder(animate) {
@@ -2846,11 +2959,8 @@ function applyOrder(animate) {
       groupEls.push(g);
       want.push(g);
     }
-    var items = bk.list.map(function(p, i) { return { p: p, i: i, k: TARGET ? sortKey(p) : null }; });
-    if (TARGET) items.sort(function(x, y) { return cmpKey(x.k, y.k) || x.i - y.i; });
-    items.forEach(function(it, i) {
-      // equal keys share a rank (1, 2, 2, 4)
-      it.p.rank = !TARGET || !it.k ? null : (i && cmpKey(items[i - 1].k, it.k) === 0 ? items[i - 1].p.rank : i + 1);
+    rankList(bk.list).forEach(function(it) {
+      it.p.rank = it.rank;
       want.push(it.p.el.root);
     });
   });
@@ -2868,6 +2978,7 @@ function applyOrder(animate) {
     if (body.children[k] !== want[k]) { body.insertBefore(want[k], body.children[k] || null); moved = true; }
   }
   showEmpty(vis.length);
+  mapSync();   // before the early return below, so it runs even when no row moved
   // DOM moves can reset scroll positions; put every open meteogram back on the shared instant
   if (moved) PLACES.forEach(function(p) { if (p.open && p.layout) restoreScroll(p); });
   if (!flip || !moved) return;
@@ -2952,7 +3063,7 @@ function syncViewBar() {
   for (i = 0; i < vs.length; i++) vs[i].setAttribute('aria-pressed', String(vs[i].getAttribute('data-view') === VIEW));
   document.getElementById('sortSel').value = SORT;
   document.getElementById('spanBtn').setAttribute('aria-pressed', String(SPAN_MODE));
-  document.getElementById('clearBtn').hidden = !TARGET;
+  document.getElementById('clearBtn').hidden = !TARGET || VIEW === 'map';
   var info = document.getElementById('rankInfo'), ref = refPlace(), name = '';
   SORTS.forEach(function(x) { if (x[0] === SORT) name = x[1]; });
   if (TARGET) {
@@ -2960,7 +3071,9 @@ function syncViewBar() {
     var span = da && db ? dayLabel(da) + (TARGET.b > TARGET.a ? ' – ' + dayLabel(db) : '') : 'selected days';
     info.innerHTML = 'Ranking <b>' + esc(span) + '</b> by <b>' + esc(name) + '</b>' +
       (TARGET.b > TARGET.a ? ' (span totals for precipitation and snow, maxima for wind and highs)' : '') +
-      '. Drag reorder is off while ranked.';
+      (VIEW === 'map' ? (MAPS.ok ? '. Pick a day above; shift-click (or Span, then tap) a second day for a range. ' + MAP_HINT : '.') : '. Drag reorder is off while ranked.');
+  } else if (VIEW === 'map') {
+    info.textContent = 'Every place that matches the Activity filter is on the map.' + (MAPS.ok ? ' ' + MAP_HINT : '');
   } else {
     info.textContent = 'Click a day heading to rank places for that day; shift-click (or Span, then tap) a second heading for a range. Click a row for its meteogram.';
   }
@@ -2981,6 +3094,7 @@ function toggleOpen(p) {
 }
 
 function toggleTag(p, tag) {
+  if (p === MAPS.exempt) MAPS.exempt = null;   // a place added from the map follows the filter once it is tagged
   var i = p.tags.indexOf(tag);
   if (i >= 0) p.tags.splice(i, 1); else p.tags.push(tag);
   p.tags = cleanTags(p.tags);
@@ -3133,6 +3247,9 @@ function fmtCoord(lat, lon) {
          Math.abs(lon).toFixed(2) + '°' + (lon >= 0 ? 'E' : 'W');
 }
 
+// True when the last refresh failed (the row may still hold older data)
+function placeFailed(p) { return !!p.err && p.seq && p.attemptAt && !(p.fetchedAt >= p.attemptAt); }
+
 // Header, error banner and loading text for the card's current status
 function renderCardState(p) {
   var e = p.el;
@@ -3145,7 +3262,7 @@ function renderCardState(p) {
   if (p.fetchedAt) { var d = new Date(p.fetchedAt); bits.push('updated ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes())); }
   if (p.data && DAYS >= ENS_MIN_DAYS && p.ensStatus === 'error') bits.push('ensemble unavailable');
   e.meta.textContent = bits.join(' · ');
-  var failed = !!p.err && p.seq && p.attemptAt && !(p.fetchedAt >= p.attemptAt);
+  var failed = placeFailed(p);
   e.stale.hidden = !(failed && p.data);   // the row keeps showing older data; the no-data case is drawn by renderRow
   e.err.hidden = !failed;
   e.msg.textContent = failed ? (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + p.err : '';
@@ -3153,13 +3270,541 @@ function renderCardState(p) {
   e.body.hidden = !p.data;
 }
 
+// ── Map view (Leaflet) ─────────────────────────────────────────────────────
+function mapActive() { return VIEW === 'map' && MAPS.ok && !!MAPS.map; }
+
+// Shows and hides the pieces that belong to the current overview style
+function syncViewChrome() {
+  var g = document.getElementById('grid'), map = VIEW === 'map';
+  g.hidden = map;
+  g.classList.toggle('gfx', VIEW === 'graphic');
+  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
+  document.getElementById('legend').hidden = map || document.getElementById('legend').hidden;
+  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
+  document.getElementById('groupGrp').hidden = map;
+  document.getElementById('mapBox').hidden = !map;
+  document.getElementById('mapDays').hidden = !map || !MAPS.ok;
+}
+
+// Message over the map (or in its place when Leaflet is missing); null hides it
+function mapMessage(text) {
+  var m = document.getElementById('mapMsg');
+  m.textContent = text || '';
+  m.hidden = !text;
+}
+
+function mapInit() {
+  if (!MAPS.ok || MAPS.map) return;
+  try {
+    MAPS.map = L.map('map', { scrollWheelZoom: true, zoomSnap: 0.25 });
+    MAPS.map.setView(MAP_DEFAULT_VIEW.center, MAP_DEFAULT_VIEW.zoom);   // markers need a view before the first fit
+    var tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(MAPS.map);
+    tiles.on('tileerror', function() {
+      MAPS.tileErr = true;
+      if (document.getElementById('mapMsg').hidden) mapMessage(TILE_MSG);
+    });
+    tiles.on('tileload', function() {
+      if (!MAPS.tileErr) return;
+      MAPS.tileErr = false;
+      if (document.getElementById('mapMsg').textContent === TILE_MSG) mapMessage(null);
+    });
+    MAPS.map.on('movestart dragstart', mapPressCancel);
+    MAPS.layer = L.layerGroup().addTo(MAPS.map);
+    MAPS.map.on('zoomend moveend', mapCollapse);
+    MAPS.map.on('popupclose', function(e) { if (e.popup === MAPS.pop) { MAPS.pop = null; MAPS.popP = null; } });
+    MAPS.map.on('contextmenu', function(e) {   // right-click; a touch long-press is handled by mapPressStart instead
+      var oe = e.originalEvent;
+      if (oe && (oe.pointerType === 'touch' || Date.now() - MAPS.touchAt < 1500)) return;
+      mapAddMenu(e.latlng);
+    });
+    var c = MAPS.map.getContainer();
+    c.addEventListener('pointerdown', mapPressStart);
+    c.addEventListener('pointermove', mapPressMove);
+    c.addEventListener('pointerup', mapPressCancel);
+    c.addEventListener('pointercancel', mapPressCancel);
+    c.addEventListener('click', function(e) {   // a long-press can be followed by a click that would close the new popup
+      if (Date.now() - MAPS.pressedAt < 1500 && !(e.target.closest && e.target.closest('.leaflet-popup'))) { MAPS.pressedAt = 0; e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  } catch (e) {
+    console.error('Map could not start', e);
+    MAPS.ok = false;
+    MAPS.map = null;
+    MAPS.layer = null;
+  }
+}
+
+function mapEnter() {
+  syncViewChrome();
+  if (!MAPS.ok) {
+    document.getElementById('mapBox').classList.add('nomap');
+    document.getElementById('mapDays').hidden = true;
+    mapMessage('The map could not load (Leaflet is unavailable, check your connection). Graphic and Table still work.');
+    return;
+  }
+  mapInit();
+  if (!MAPS.ok) {   // mapInit failed
+    document.getElementById('mapBox').classList.add('nomap');
+    document.getElementById('mapDays').hidden = true;
+    mapMessage('The map could not start. Graphic and Table still work.');
+    return;
+  }
+  MAPS.fitPending = true;
+  mapSize();   // container is visible now: size it, then Leaflet can fit
+  // Phones: the controls fill the first screen, so bring the day picker and map into view
+  if (window.matchMedia && window.matchMedia('(max-width:600px)').matches) {
+    setTimeout(function() {
+      if (!mapActive()) return;
+      var r = document.getElementById('mapDays').getBoundingClientRect();
+      window.scrollTo(0, Math.max(0, window.pageYOffset + r.top - 8));
+    }, 0);
+  }
+}
+
+function mapLeave() {
+  if (!MAPS.ok || !MAPS.map) return;
+  MAPS.map.closePopup();
+  mapHoverOff();
+  mapPressCancel();
+  MAPS.fitPending = true;
+}
+
+// Map height: the rest of the window below its top edge, never under MAP_MIN_H
+function mapSizeKey() {
+  return document.getElementById('mapDays').offsetHeight + '|' + Math.round(document.getElementById('mapBox').getBoundingClientRect().top + window.pageYOffset);
+}
+function mapSize() {
+  if (!mapActive()) return;
+  var box = document.getElementById('mapBox'), el = document.getElementById('map');
+  MAPS.sizeKey = mapSizeKey();
+  var top = box.getBoundingClientRect().top + window.pageYOffset;
+  var h = Math.max(MAP_MIN_H, Math.floor(window.innerHeight - top - MAP_BOTTOM_PAD));
+  el.style.height = h + 'px';
+  MAPS.map.invalidateSize();
+}
+
+function mapVisible(p) { return placeVisible(p) || p === MAPS.exempt; }
+
+function placeIsClimb(p) { return p.tags.indexOf(CLIMB_TAG) >= 0; }
+
+// 'loading' (no data yet), 'error' (last load failed) or 'ok'
+function mapMarkerState(p) {
+  if (p.status === 'error') return 'error';
+  if (p.status === 'loading' && !p.data) return 'loading';
+  return 'ok';
+}
+
+// Sun-path arch: three pills along a ~200 degree arc over the top, morning left, midday top, afternoon right.
+// Origin of the SVG is the place; rank (or "!" on error) sits in the centre
+function archSvg(thirds, P, state, rank) {
+  var S = MAP_ARCH.size, c = S / 2, r = MAP_ARCH.r, span = MAP_ARCH.span, gap = MAP_ARCH.gap, seg = span / 3;
+  function pt(deg) { var a = deg * Math.PI / 180; return (c + r * Math.sin(a)).toFixed(2) + ' ' + (c - r * Math.cos(a)).toFixed(2); }
+  var s = '<svg class="mkarch" width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '" style="left:' + (-c) + 'px;top:' + (-c) + 'px">';
+  s += '<circle cx="' + c + '" cy="' + c + '" r="' + (r - MAP_ARCH.w / 2 - 1) + '" style="fill:var(--surface)" opacity=".92"/>';
+  for (var t = 0; t < 3; t++) {
+    var v = state === 'ok' && thirds ? thirds[t] : null;
+    var a0 = -span / 2 + seg * t + gap / 2, a1 = -span / 2 + seg * (t + 1) - gap / 2;
+    var tip = THIRD_NAMES[t].charAt(0).toUpperCase() + THIRD_NAMES[t].slice(1) + ': ' +
+      (state === 'loading' ? 'loading' : state === 'error' ? 'unavailable' : v == null ? 'no score' : Math.round(v));
+    var dd = 'M' + pt(a0) + ' A' + r + ' ' + r + ' 0 0 1 ' + pt(a1);
+    s += '<path d="' + dd + '" fill="none" style="stroke:var(--text)" opacity=".55" stroke-width="' + (MAP_ARCH.w + 3) + '" stroke-linecap="round"/>';   // outline so grey pills stay visible on any tile
+    s += '<path d="' + dd + '" fill="none" stroke="' + climbBg(v, P) +
+         '" stroke-width="' + MAP_ARCH.w + '" stroke-linecap="round"><title>' + tip + '</title></path>';
+  }
+  var txt = state === 'error' ? '!' : state === 'loading' || rank == null ? '' : String(rank);
+  if (txt) s += '<text x="' + c + '" y="' + (c + 5) + '" text-anchor="middle" font-size="' + (txt.length > 1 ? 12 : 14) +
+    '" font-weight="700" font-family="system-ui,monospace" style="fill:var(--text)">' + txt + '</text>';
+  return s + '</svg>';
+}
+
+// Marker icon HTML. mode: 'full' (arch for Climb places, dot or badge with name for others),
+// 'badge' (small rank number) or 'dot' (collapsed because it would overlap a full marker)
+function mapIconHtml(p, mode, P) {
+  var name = '<div class="mkn' + (placeIsClimb(p) && mode === 'full' ? ' mkc' : '') + '">' + esc(p.label) + '</div>';
+  if (mode === 'full' && placeIsClimb(p)) {
+    var st = mapMarkerState(p);
+    return archSvg(st === 'ok' ? spanThirds(p, TARGET) : null, P, st, p.mapRank) + name;
+  }
+  var ec = mapMarkerState(p) === 'error' ? ' mke' : '';
+  var mark = p.mapRank != null ? '<div class="mkb' + ec + '">' + p.mapRank + '</div>' : '<div class="mkd' + ec + '"></div>';
+  return mode === 'full' ? mark + name : mark;
+}
+
+// Pixel rectangle of a full marker relative to its place: the anchor is the arch centre (or dot centre)
+function mapFootprint(p) {
+  var nameW = Math.min(150, p.label.length * 6 + 10);
+  if (placeIsClimb(p)) {
+    var w = Math.max(MAP_ARCH.size + 6, nameW);
+    return { x0: -w / 2, x1: w / 2, y0: -MAP_ARCH.size / 2, y1: MAP_ARCH.size / 2 + 22 };
+  }
+  var w2 = Math.max(16, nameW);
+  return { x0: -w2 / 2, x1: w2 / 2, y0: -9, y1: 24 };
+}
+
+// Greedy collapse in rank order (unranked last): a place keeps its full marker unless it overlaps one already placed
+function mapCollapse() {
+  if (!mapActive()) return;
+  var pts = PLACES.filter(function(p) { return p.mk; });
+  pts.sort(function(a, b) {
+    var ra = a.mapRank == null ? 1e9 : a.mapRank, rb = b.mapRank == null ? 1e9 : b.mapRank;
+    return ra - rb || PLACES.indexOf(a) - PLACES.indexOf(b);
+  });
+  var placed = [];
+  pts.forEach(function(p) {
+    var o = MAPS.map.latLngToLayerPoint(p.mk.getLatLng()), f = mapFootprint(p);
+    var R = { x0: o.x + f.x0, x1: o.x + f.x1, y0: o.y + f.y0, y1: o.y + f.y1 };
+    var hit = placed.some(function(q) { return R.x0 < q.x1 && R.x1 > q.x0 && R.y0 < q.y1 && R.y1 > q.y0; });
+    if (!hit) placed.push(R);
+    p.mkMode = !hit ? 'full' : p.mapRank != null ? 'badge' : 'dot';
+    p.mk.setZIndexOffset((p.mkMode === 'full' ? 2000 : 0) + (p.mapRank != null ? 1000 - p.mapRank : 0));
+    mapUpdatePlace(p);
+  });
+}
+
+// Hovering a collapsed marker shows its full marker on top; a non-interactive marker keeps the hover stable
+function mapHoverOn(p) {
+  mapHoverOff();
+  if (!mapActive() || !p.mk || p.mkMode === 'full') return;
+  MAPS.ghost = L.marker(p.mk.getLatLng(), { icon: mapMakeIcon(mapIconHtml(p, 'full', pal())), interactive: false, keyboard: false, zIndexOffset: 10000 });
+  MAPS.ghost.addTo(MAPS.map);
+}
+function mapHoverOff() {
+  if (MAPS.ghost && MAPS.map) MAPS.map.removeLayer(MAPS.ghost);
+  MAPS.ghost = null;
+}
+
+function mapMakeIcon(html) {
+  return L.divIcon({ className: 'wxmk', html: html, iconSize: [0, 0] });
+}
+
+// Rebuilds one marker's icon, only when its HTML changed (avoids flicker)
+function mapUpdatePlace(p) {
+  if (!mapActive() || !p.mk) return;
+  var html = mapIconHtml(p, p.mkMode, pal());
+  if (html === p.mkHtml) return;
+  p.mkHtml = html;
+  p.mk.setIcon(mapMakeIcon(html));
+}
+
+// Brings the markers in line with the visible places
+function mapSync() {
+  if (!mapActive()) return;
+  mapRanks();
+  renderMapDays();
+  if (MAPS.sizeKey !== mapSizeKey()) mapSize();   // the day strip changes height after it is filled
+  var vis = 0, P = pal();
+  PLACES.forEach(function(p) {
+    if (!mapVisible(p)) {
+      if (p.mk) { MAPS.layer.removeLayer(p.mk); p.mk = null; p.mkHtml = ''; }
+      return;
+    }
+    vis++;
+    var html = mapIconHtml(p, p.mkMode, P);
+    if (!p.mk) {
+      p.mkHtml = html;
+      p.mk = L.marker([p.lat, p.lon], { icon: mapMakeIcon(html), title: p.label, keyboard: true });
+      p.mk.on('mouseover', function() { mapHoverOn(p); });
+      p.mk.on('mouseout', mapHoverOff);
+      p.mk.on('click', function() { mapOpenPopup(p, true); });
+      p.mk.addTo(MAPS.layer);
+    } else if (html !== p.mkHtml) {
+      p.mkHtml = html;
+      p.mk.setIcon(mapMakeIcon(html));
+    }
+  });
+  mapHoverOff();
+  mapMessage(!PLACES.length ? 'No places yet. Add a zip code, place name, or lat, lon above.'
+    : !vis ? 'No places have the selected activity tags.' : MAPS.tileErr ? TILE_MSG : null);
+  if (MAPS.fitPending) { MAPS.fitPending = false; mapFit(); }
+  mapCollapse();
+  mapPopupRefresh();
+}
+
+// A place added by search or location while Map shows: exempt from the filter like a map add, then fit
+function mapAddedFromForm(p) {
+  if (mapActive()) { MAPS.exempt = p; mapSync(); }
+  mapRequestFit();
+}
+
+// Fit now if Map is showing; otherwise the next entry fits (setView sets the flag)
+function mapRequestFit() {
+  if (!mapActive()) return;
+  MAPS.fitPending = false;
+  mapFit();
+}
+
+function mapFit() {
+  if (!mapActive()) return;
+  var pts = PLACES.filter(mapVisible).map(function(p) { return [p.lat, p.lon]; });
+  if (!pts.length) return;   // nothing to show: leave the view where it is
+  MAPS.map.invalidateSize();
+  MAPS.map.fitBounds(L.latLngBounds(pts), { padding: MAP_FIT.padding, maxZoom: MAP_FIT.maxZoom, animate: false });
+}
+
+// Ranks every visible place as ONE list (ignoring GROUP) into p.mapRank; everything else, and the
+// place added from the map, gets null so the numbers match the rows
+function mapRanks() {
+  PLACES.forEach(function(p) { p.mapRank = null; });
+  rankList(PLACES.filter(function(p) { return placeVisible(p) && p !== MAPS.exempt; })).forEach(function(it) {
+    it.p.mapRank = it.rank;
+  });
+}
+
+// Mean of daily[k].climbThirds[t] over T.a..T.b, skipping null days and days beyond this place's data
+// Returns [morning, midday, afternoon], each unrounded or null when every day is null; null with no data or no T
+function spanThirds(p, T) {
+  if (!p || !p.data || !p.data.daily || !T) return null;
+  var d = p.data.daily, out = [null, null, null], t, k;
+  for (t = 0; t < 3; t++) {
+    var sum = 0, n = 0;
+    for (k = T.a; k <= T.b && k < d.length; k++) {
+      var th = d[k] && d[k].climbThirds, v = th ? th[t] : null;
+      if (v != null && isFinite(v)) { sum += v; n++; }
+    }
+    out[t] = n ? sum / n : null;
+  }
+  return out;
+}
+
+// Map view always has a day: opens on today (index 0) when nothing is ranked
+function mapEnsureTarget() {
+  if (VIEW === 'map' && !TARGET) TARGET = { a: 0, b: 0, anchor: 0 };
+}
+
+// Day picker strip above the map; same labels as the day headings
+function renderMapDays() {
+  var box = document.getElementById('mapDays'), ref = refPlace(), html = '';
+  for (var k = 0; k < DAYS; k++) {
+    var d = ref && ref.data.daily[k];
+    var on = TARGET && k >= TARGET.a && k <= TARGET.b;
+    html += '<button type="button" class="mdb" data-day="' + k + '" aria-pressed="' + !!on + '"' +
+            ' title="Rank places for this day (shift-click another day for a span)">' +
+            (d ? '<b>' + WD[d.wd] + '</b><span>' + MON[d.mo - 1] + ' ' + d.d + '</span>' : '<b>Day ' + (k + 1) + '</b><span>&nbsp;</span>') +
+            '</button>';
+  }
+  if (box.wxHtml === html) return;   // unchanged: keep focus
+  box.wxHtml = html;
+  box.innerHTML = html;
+  var on1 = box.querySelector('.mdb[aria-pressed=true]');   // keep the selection visible when the strip scrolls sideways
+  if (on1 && box.scrollWidth > box.clientWidth) {
+    box.scrollLeft = on1.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - (box.clientWidth - on1.offsetWidth) / 2;
+  }
+}
+
+// Like onHeaderClick, but never clears TARGET: clicking the selected day narrows to that one day
+function mapPickDay(k, shift) {
+  var T = TARGET;
+  if (T && (shift || SPAN_MODE)) {
+    SPAN_MODE = false;
+    setTarget({ a: Math.min(T.anchor, k), b: Math.max(T.anchor, k), anchor: T.anchor });
+  } else {
+    SPAN_MODE = false;
+    if (T && T.a === k && T.b === k) { syncViewBar(); return; }   // already the one selected day
+    setTarget({ a: k, b: k, anchor: k });
+  }
+}
+
+document.getElementById('mapDays').addEventListener('click', function(e) {
+  var b = e.target.closest ? e.target.closest('button[data-day]') : null;
+  if (b) mapPickDay(+b.getAttribute('data-day'), e.shiftKey);
+});
+
+// Max hi, min lo, summed total, max prob and ws over T.a..T.b; a field is null if any day is null (as in sortKey).
+// Returns null without data, without T or when T runs past this place's days
+function spanStats(p, T) {
+  var d = p && p.data && p.data.daily;
+  if (!d || !T || T.b >= d.length) return null;
+  var out = { hi: -Infinity, lo: Infinity, total: 0, prob: -Infinity, ws: -Infinity }, bad = {}, k;
+  for (k = T.a; k <= T.b; k++) {
+    var x = d[k];
+    if (!x) return null;
+    [['hi', x.hi], ['lo', x.lo], ['total', x.total], ['prob', x.prob], ['ws', x.ws]].forEach(function(f) {
+      if (f[1] == null || !isFinite(f[1])) { bad[f[0]] = true; return; }
+      if (f[0] === 'hi' || f[0] === 'prob' || f[0] === 'ws') out[f[0]] = Math.max(out[f[0]], f[1]);
+      else if (f[0] === 'lo') out.lo = Math.min(out.lo, f[1]);
+      else out.total += f[1];
+    });
+  }
+  Object.keys(bad).forEach(function(f) { out[f] = null; });
+  return out;
+}
+
+// Popup body as an HTML string (rebuilt on every mapSync; the element keeps its click listener)
+function mapPopupHtml(p) {
+  var T = TARGET, st = mapMarkerState(p), u = U(), s = '';
+  var rank = p.mapRank != null ? '<span class="pr">#' + p.mapRank + '</span>' : '';
+  s += '<div class="pt">' + rank + esc(p.label) + '</div>';
+  s += '<div class="ptags">' + TAGS.map(function(t) {
+    return '<button type="button" data-act="tag" data-tag="' + t + '" aria-pressed="' + (p.tags.indexOf(t) >= 0) + '">' + t + '</button>';
+  }).join('') + '</div>';
+  var S = spanStats(p, T), d = p.data && p.data.daily;
+  if (st === 'loading') s += '<div class="pday">Loading forecast…</div>';
+  else if (S && d) {
+    function dl(x) { return WD[x.wd] + ' ' + MON[x.mo - 1] + ' ' + x.d; }
+    s += '<div class="pday">' + dl(d[T.a]) + (T.b > T.a ? ' to ' + dl(d[T.b]) : '') + (T.b > T.a ? ' (span)' : '') + '</div>';
+    var hi = cv('temp', S.hi), lo = cv('temp', S.lo), pr = cv('precip', S.total), ws = cv('wind', S.ws);
+    s += '<div class="pst">' +
+      '<span>High ' + fv(hi, 0) + u.temp.u + '</span><span>Low ' + fv(lo, 0) + u.temp.u + '</span>' +
+      '<span>Precip ' + fv(pr, u.precip.dp) + ' ' + u.precip.u + (S.prob != null ? ' (' + Math.round(S.prob) + '%)' : '') + '</span>' +
+      '<span>Wind ' + fv(ws, 0) + ' ' + u.wind.u + '</span></div>';
+    var th = placeIsClimb(p) ? spanThirds(p, T) : null;
+    if (th) {
+      var P = pal();
+      s += '<div class="pth">' + th.map(function(v, i) {
+        var nm = THIRD_NAMES[i].charAt(0).toUpperCase() + THIRD_NAMES[i].slice(1);
+        return '<span style="background:' + climbBg(v, P) + ';color:' + climbFg(v, P) + '"><small>' + nm + '</small>' +
+          (v == null ? '–' : Math.round(v)) + '</span>';
+      }).join('') + '</div>';
+    }
+  } else if (!failed) s += '<div class="pday">No forecast for the selected day.</div>';
+  var failed = placeFailed(p) || st === 'error';
+  if (failed) s += '<div class="perr">' + (p.data ? 'Refresh failed, showing older data: ' : 'Could not load forecast: ') + esc(p.err || 'unknown error') + '</div>';
+  var acts = '';
+  if (failed) acts += '<button type="button" data-act="retry">Retry</button>';
+  if (p !== MAPS.exempt) acts += '<button type="button" data-act="open">Open forecast</button>';   // that row is hidden by the filter until tagged
+  return s + (acts ? '<div class="pact">' + acts + '</div>' : '');
+}
+
+function mapPopupEl(p) {
+  var el = document.createElement('div');
+  el.className = 'mpop';
+  el.wxHtml = mapPopupHtml(p);
+  el.innerHTML = el.wxHtml;
+  el.addEventListener('click', function(e) {
+    e.stopPropagation();   // the popup rebuilds its buttons on a tag change; a detached target would otherwise reach the map as a click and close the popup
+    var b = e.target.closest ? e.target.closest('button[data-act]') : null;
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'tag') toggleTag(p, b.getAttribute('data-tag'));
+    else if (act === 'open') mapOpenForecast(p);
+    else if (act === 'retry') loadPlace(p);
+  });
+  return el;
+}
+
+function mapPopupOffset(p) { return L.point(0, placeIsClimb(p) && p.mkMode === 'full' ? -30 : -12); }
+
+// Opens the popup for p at its marker. pan false keeps the map where it is (a place just added from the map)
+function mapOpenPopup(p, pan) {
+  if (!mapActive() || !p.mk) return;
+  mapHoverOff();
+  var pop = L.popup({ className: 'wxpop', offset: mapPopupOffset(p), autoPan: !!pan, autoPanPaddingTopLeft: [10, 10], autoPanPaddingBottomRight: [10, 40], maxWidth: 280, closeOnClick: true })
+    .setLatLng(p.mk.getLatLng()).setContent(mapPopupEl(p));
+  pop.openOn(MAPS.map);   // closes any popup that was open first
+  MAPS.pop = pop;
+  MAPS.popP = p;
+}
+
+// Keeps an open popup in step with ranks, tags, day, units and load state; closes it when its place is gone
+function mapPopupRefresh() {
+  if (!MAPS.pop || !MAPS.popP) return;
+  var p = MAPS.popP;
+  if (!p.mk || PLACES.indexOf(p) < 0) { MAPS.map.closePopup(); return; }
+  var el = MAPS.pop.getContent(), html = mapPopupHtml(p);
+  MAPS.pop.options.offset = mapPopupOffset(p);
+  if (el.wxHtml === html) return;
+  el.wxHtml = html;
+  el.innerHTML = html;
+  MAPS.pop.update();
+}
+
+function mapOpenForecast(p) {
+  if (p === MAPS.exempt || PLACES.indexOf(p) < 0) return;
+  setView('graphic');
+  if (!p.open) toggleOpen(p);
+  p.el.root.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// "Add place here" menu at latlng (right-click or long-press)
+function mapAddMenu(latlng) {
+  if (!mapActive()) return;
+  var full = PLACES.length >= MAX_PLACES, el = document.createElement('div');
+  el.className = 'mpop';
+  el.innerHTML = full ? '<div class="pday">Up to ' + MAX_PLACES + ' places</div>'
+    : '<div class="pact"><button type="button" data-act="add">Add place here</button></div>';
+  el.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (e.target.closest && e.target.closest('button[data-act="add"]')) { MAPS.map.closePopup(); mapAddHere(latlng); }
+  });
+  mapHoverOff();
+  var pop = L.popup({ className: 'wxpop', offset: L.point(0, 0), autoPan: false, closeButton: false, minWidth: 0 })
+    .setLatLng(latlng).setContent(el);
+  pop.openOn(MAPS.map);
+  MAPS.pop = pop;
+  MAPS.popP = null;
+}
+
+// Adds a place at latlng without moving the map. It stays visible with its popup open until it is tagged
+// or the Activity filter changes (MAPS.exempt), and has no rank number
+function mapAddHere(latlng) {
+  var ll = latlng.wrap(), lat = roundTo(ll.lat, 4), lon = roundTo(ll.lng, 4);
+  if (MAPS.adding) return;   // a name lookup is already in flight
+  if (PLACES.length >= MAX_PLACES) { setStatus('Up to ' + MAX_PLACES + ' places', true); return; }
+  MAPS.adding = true;
+  setStatus('Looking up place name…');
+  var coord = lat + ', ' + lon;
+  reverseLabel(lat, lon)
+    .then(function(n) { return 'Near ' + n; }, function() { return coord + ' (no place found)'; })
+    .then(function(label) {
+      MAPS.adding = false;
+      var p = addPlace({ lat: lat, lon: lon, label: label });   // no mapRequestFit: the view stays put
+      if (!p || !mapActive()) return;
+      MAPS.exempt = p;
+      mapSync();
+      mapOpenPopup(p, true);   // autoPan keeps the popup visible; the map is not refit
+    });
+}
+
+// Touch long-press for "Add place here" (iOS fires no contextmenu on long-press, and Leaflet 1.9 has no tap handler)
+function mapPressStart(e) {
+  if (e.pointerType !== 'touch') return;
+  MAPS.touchAt = Date.now();
+  MAPS.pressedAt = 0;   // a new touch begins: no stray click from the last press is coming
+  if (MAPS.press) { mapPressCancel(); return; }   // second finger: it is a pinch, not a press
+  if (e.target.closest && e.target.closest('.leaflet-marker-icon,.leaflet-popup,.leaflet-control')) return;
+  var pt = MAPS.map.mouseEventToContainerPoint(e);
+  MAPS.press = { id: e.pointerId, x: e.clientX, y: e.clientY, latlng: MAPS.map.containerPointToLatLng(pt), timer: null };
+  MAPS.press.timer = setTimeout(function() {
+    var ll = MAPS.press && MAPS.press.latlng;
+    MAPS.press = null;
+    if (!ll) return;
+    MAPS.pressedAt = Date.now();
+    if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) { /* not permitted */ } }
+    mapAddMenu(ll);
+  }, MAP_PRESS.ms);
+}
+function mapPressMove(e) {
+  var s = MAPS.press;
+  if (s && e.pointerId === s.id && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MAP_PRESS.movePx) mapPressCancel();
+}
+function mapPressCancel() {
+  if (MAPS.press) clearTimeout(MAPS.press.timer);
+  MAPS.press = null;
+}
+
+function mapDrop(p) {
+  if (p === MAPS.exempt) MAPS.exempt = null;
+  if (!MAPS.ok || !MAPS.layer || !p.mk) return;
+  MAPS.layer.removeLayer(p.mk);
+  p.mk = null;
+  p.mkHtml = '';
+  if (MAPS.map && MAPS.popP === p) MAPS.map.closePopup();
+}
+
 function renderAll() {
+  syncViewChrome();
+  if (VIEW === 'map') {   // the grid is hidden (width 0), so skip its sizing and row rendering
+    renderLegend();
+    syncNotes();
+    syncViewBar();
+    applyOrder();
+    return;
+  }
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');   // open meteograms are as wide as the visible grid
-  g.classList.toggle('gfx', VIEW === 'graphic');
-  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
-  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
   computePph();
   computeSpph();
   var P = VIEW === 'graphic' ? stripPal() : pal();
@@ -3185,6 +3830,7 @@ function computeSpph() {
 function syncNotes() {
   document.getElementById('noteGfx').hidden = VIEW !== 'graphic';
   document.getElementById('noteTbl').hidden = VIEW !== 'table';
+  document.getElementById('noteMap').hidden = VIEW !== 'map';
 }
 
 function computePph() {
@@ -3206,6 +3852,7 @@ function setDays(n) {
   viewT = null;
   if (TARGET && TARGET.a >= DAYS) TARGET = null;
   else if (TARGET && TARGET.b >= DAYS) TARGET = { a: TARGET.a, b: DAYS - 1, anchor: Math.min(TARGET.anchor, DAYS - 1) };
+  mapEnsureTarget();
   syncSegs();
   renderAll();
   if (DAYS >= ENS_MIN_DAYS) {
@@ -3243,9 +3890,13 @@ function setRowH(v) {
 
 function setView(v) {
   if (VIEWS.indexOf(v) < 0 || v === VIEW) return;
+  if (v === 'map') MAPS.fitPending = true;
+  else if (VIEW === 'map') mapLeave();
   VIEW = v;
+  mapEnsureTarget();   // after VIEW is set (it checks VIEW), still before the first render
   savePrefs();
   clearCursor();
+  if (VIEW === 'map') mapEnter();
   renderAll();
 }
 
@@ -3296,8 +3947,10 @@ function setUnits(u) {
     var t = b.getAttribute('data-tag'), i = TAGFILTER.indexOf(t);
     if (i >= 0) TAGFILTER.splice(i, 1); else TAGFILTER.push(t);
     TAGFILTER = cleanTags(TAGFILTER);
+    MAPS.exempt = null;   // a place added from the map follows the filter again
     savePrefs();
     syncViewBar();
+    mapRequestFit();
     applyOrder();
   });
   document.getElementById('groupBtn').addEventListener('click', function() {
@@ -3355,6 +4008,7 @@ var lastW = window.innerWidth, resizeTimer = null;
 window.addEventListener('resize', function() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(function() {
+    mapSize();   // the map height follows vertical resizes too
     // phone browsers fire resize as the URL bar hides; only a width change needs a redraw
     if (window.innerWidth === lastW) return;
     lastW = window.innerWidth;
@@ -3395,15 +4049,15 @@ setInterval(function() {
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
-  g.classList.toggle('gfx', VIEW === 'graphic');
-  g.classList.toggle('withclimb', VIEW === 'table' && climbColOn());
-  document.getElementById('rowhGrp').hidden = VIEW !== 'graphic';
+  mapEnsureTarget();
+  syncViewChrome();
   computePph();
   computeSpph();
   renderHeader();
   renderLegend();
   syncNotes();
   syncClimbCtl();
+  if (VIEW === 'map') mapEnter();
   applyOrder();
   PLACES.forEach(function(p) { loadPlace(p); });
 })();

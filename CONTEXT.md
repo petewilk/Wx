@@ -1,6 +1,6 @@
 # Context
 
-Glossary of terms used by the Best climbing ranking in `wx_dashboard.html`.
+Glossary of terms used by the Best climbing ranking and the Map view markers in `wx_dashboard.html`.
 
 **Climbing Index**
 A heuristic score from 0 to 100 for how good the weather is for rock climbing. It is computed for each hour, averaged over the daylight hours to give a daily value, and averaged over the ranked days to rank places. It is not a validated model and does not know a crag's aspect or local shade.
@@ -19,3 +19,9 @@ A running estimate of how much water is still on the rock, in millimetres. Rain 
 
 **Sun knob**
 A single global setting (Sunny, Mixed or Shady) for the kind of walls the climber is planning for. It sets how much the sun warms the effective temperature and stands in for aspect, which is not stored per place.
+
+**Pill arch**
+The sun-path arch of three pills drawn around a Climb place's rank on the Map view: morning on the left, midday on top, afternoon on the right. Each pill is colored by the Climbing Index for that third of the daylight hours.
+
+**Collapse**
+On the Map view, overlapping lower-ranked places shrink to a rank badge or dot so the best-ranked place keeps its full marker.
