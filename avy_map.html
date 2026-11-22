@@ -21,7 +21,16 @@
   .about summary{cursor:pointer;color:var(--text)}
   .about p{margin-top:3px;max-height:30vh;overflow-y:auto;max-width:60em}
   .about a{color:var(--accent)}
+  #mapWrap{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
   #map{flex:1 1 auto;min-height:0;background:var(--bg)}
+  #timeline{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:6px 12px;background:var(--surface);border-top:1px solid var(--border)}
+  #timeline button,#timeline select{min-height:32px;padding:0 10px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:12px system-ui,sans-serif;cursor:pointer}
+  #timeline button[aria-pressed=true]{background:var(--accent);color:var(--btn-on-text);font-weight:700}
+  #timeline button:disabled,#timeline select:disabled,#timeline input:disabled{opacity:.4;cursor:not-allowed}
+  #timeline button:focus-visible,#timeline select:focus-visible,#timeline input:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+  #replayPlay{min-width:72px}
+  #replaySlider{flex:1 1 120px;min-width:120px;min-height:32px;accent-color:var(--accent);margin:0}
+  #replayLabel{min-width:6.5em;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
   .leaflet-control-layers,.leaflet-bar a,.leaflet-control-attribution{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}
   .leaflet-control-attribution a{color:var(--accent)!important}
   .leaflet-control-attribution{font-size:10px}
@@ -57,6 +66,9 @@
   #notice{flex:0 0 auto;background:var(--surface);color:var(--warn);border-bottom:1px solid var(--warn);padding:4px 12px;font-size:11px;white-space:pre-line}
   #notice[hidden]{display:none}
   @media (max-width:520px){
+    #timeline{padding:6px 8px;gap:4px 6px}
+    #replaySlider{flex-basis:100%;order:5}
+    #replayLabel{order:4;margin-left:auto}
     #rose{width:188px;padding:6px;bottom:24px}
     #rose text{font-size:17px}
     .legend{font-size:10px;gap:1px 6px}
@@ -87,6 +99,7 @@
   </details>
 </header>
 <div id="notice" hidden></div>
+<div id="mapWrap">
 <div id="map"></div>
 <div id="rose">
   <div class="ttl">Salt Lake &middot; overall danger</div>
@@ -101,6 +114,19 @@
   <div id="readout">Hover the map</div>
   <div class="legend" id="legend"></div>
 </div>
+</div>
+<div id="timeline">
+  <button type="button" id="replayPlay" aria-pressed="false">&#9654; Play</button>
+  <select id="replayDwell" aria-label="Seconds per day">
+    <option value="2">2 s/day</option>
+    <option value="1" selected>1 s/day</option>
+    <option value="0.5">0.5 s/day</option>
+    <option value="0.25">0.25 s/day</option>
+  </select>
+  <button type="button" id="replayLoop" aria-pressed="false">Loop</button>
+  <input type="range" id="replaySlider" min="0" max="0" step="1" value="0" aria-label="Forecast day">
+  <output id="replayLabel" for="replaySlider">&mdash;</output>
+</div>
 
 <script>
 'use strict';
@@ -110,6 +136,7 @@
  * data/avy/{center}/{slug}/{YYYY-MM-DD}.json  one day: {date, sample, overall_danger_rose: [24 ints], ...}
  * The newest day is the last entry of index.json. ?date=YYYY-MM-DD picks another day; the date
  * switcher (prev/next/date input) rewrites it with history.replaceState. An invalid ?date= is removed.
+ * The timeline bar under the map (play/pause, dwell, loop, day slider) steps through the index dates.
  * Rose encoding: 24 values. [0..7] upper band, [8..15] mid, [16..23] low.
  * Each band ordered N, NE, E, SE, S, SW, W, NW.
  * Values: 0 = no rating, 2 = Low, 4 = Moderate, 6 = Considerable, 8 = High, 10 = Extreme.
@@ -425,6 +452,9 @@ let day = null;        // loaded day JSON
 let rose = null;
 let statusMsg = 'Loading forecast\u2026';   // shown instead of a level while rose is null
 let shownDate = null;  // date the UAC links point at, or null
+let pendingDate = null;   // day asked for but not yet shown (loadDay in flight)
+/** The day the UI should show: the requested one while it loads, else the shown one. */
+function viewDate() { return pendingDate ?? shownDate; }
 // LUT: index 0..23 -> null, [r,g,b,alpha] (solid) or [r,g,b,alpha,sr,sg,sb,salpha] (hatched:
 // base color + stripe color; a transparent base has alpha 0). Rebuilt whenever the day changes.
 let LUT = [];
@@ -533,7 +563,14 @@ const DangerLayer = L.GridLayer.extend({
       .catch(err => { console.warn(err); done(err, canvas); });
     return canvas;
   },
+  /**
+   * Repaint every painted tile for the current rose/mode. Cached tiles paint synchronously; tiles whose
+   * terrain was evicted reload it. Returns a promise (never rejects) that settles when those reloads
+   * finish or after 10 s. Tiles still loading in createTile are not waited for: they paint themselves
+   * with the current rose when their terrain arrives.
+   */
   repaint() {
+    const waits = [];
     for (const k in this._tiles) {
       const cv = this._tiles[k].el;
       if (!cv || !cv._painted) continue;
@@ -541,8 +578,11 @@ const DangerLayer = L.GridLayer.extend({
       const c = cv._coords;
       const e = demCache.get(demKey(c.z, c.x, c.y));
       if (e && e.data) paintOverlay(cv, c, e.data);
-      else loadDem(c.z, c.x, c.y).then(d => paintOverlay(cv, c, d)).catch(err => console.warn(err));   // evicted from cache
+      else waits.push(loadDem(c.z, c.x, c.y).then(d => paintOverlay(cv, c, d)).catch(err => console.warn(err)));   // evicted from cache
     }
+    let t = 0;
+    const timeout = new Promise(res => { t = setTimeout(res, 10000); });
+    return Promise.race([Promise.all(waits), timeout]).then(() => { clearTimeout(t); });
   }
 });
 
@@ -599,7 +639,7 @@ const ModeControl = L.Control.extend({
         mode = id;
         saveSetting('mode', mode);
         btns.forEach((x, i) => x.setAttribute('aria-pressed', String(defs[i][0] === mode)));
-        danger.repaint();
+        danger.repaint();   // promise ignored
       });
       return b;
     });
@@ -730,10 +770,10 @@ function showDay() {
   if (shownDate) { link.href = uacForecastUrl(ZONE.slug, shownDate); link.hidden = false; }
   else { link.removeAttribute('href'); link.hidden = true; }
   setUacAttribution(shownDate);
-  syncSwitcher();
+  syncDateUi();
 }
 
-/** Make newDay (validated) or nothing (newDay null, msg explains) the current day, and repaint. */
+/** Make newDay (validated) or nothing (newDay null, msg explains) the current day, and repaint. Resolves when repainted. */
 function setDay(newDay, date, msg) {
   day = newDay;
   rose = newDay ? newDay.overall_danger_rose : null;
@@ -741,8 +781,9 @@ function setDay(newDay, date, msg) {
   shownDate = date;
   rebuildLut();
   showDay();
-  danger.repaint();
-  setReadout('Hover the map');   // the old readout and highlight belonged to the previous day
+  const painted = danger.repaint();
+  refreshReadout();   // re-query the last hovered point against the new day
+  return painted;
 }
 
 let hlIdx = -1;
@@ -768,7 +809,11 @@ function lookup(latlng) {
   const wp = map.project(latlng, z);
   const tx = Math.floor(wp.x / 256), ty = Math.floor(wp.y / 256);
   const e = demCache.get(demKey(z, tx, ty));
-  if (!e || !e.data) { setReadout('Loading terrain...'); if (!e) loadDem(z, tx, ty).catch(() => {}); return; }
+  if (!e || !e.data) {
+    setReadout('Loading terrain...');
+    (e ? e.promise : loadDem(z, tx, ty)).then(() => { if (lastLatLng === latlng) lookup(latlng); }).catch(() => {});
+    return;
+  }
   const c = Math.min(255, Math.floor(wp.x - tx * 256)), r = Math.min(255, Math.floor(wp.y - ty * 256));
   const n = r * 256 + c;
   const elevM = e.data.elev[n], slope = e.data.slope2[n] / 2, asp = e.data.aspect[n];
@@ -781,15 +826,22 @@ function lookup(latlng) {
   setReadout(txt, rose ? idx : undefined);
 }
 
+let lastLatLng = null;   // last point queried; cleared when the pointer leaves the map
+/** Re-run the lookup for the last queried point (after a day change), else the idle prompt. */
+function refreshReadout() {
+  if (lastLatLng) lookup(lastLatLng); else setReadout('Hover the map');
+}
+
 let pending = null, raf = 0;
 function schedule(ll) {
   pending = ll;
+  lastLatLng = ll;
   if (raf) return;
   raf = requestAnimationFrame(() => { raf = 0; if (pending) lookup(pending); });
 }
 map.on('mousemove', e => schedule(e.latlng));
 map.on('click', e => schedule(e.latlng));   // phones: tap to query
-map.on('mouseout', () => { pending = null; setReadout('Hover the map'); });
+map.on('mouseout', () => { pending = null; lastLatLng = null; setReadout('Hover the map'); });
 map.on('zoomend', () => { pending = null; });
 L.DomEvent.disableClickPropagation(document.getElementById('rose'));
 L.DomEvent.disableScrollPropagation(document.getElementById('rose'));
@@ -814,11 +866,12 @@ function nextIndexDate(d) {
   return best;
 }
 
-/** Single place that syncs the switcher (value, min, max, disabled) to shownDate and indexDates. */
+/** Single place that syncs the switcher (value, min, max, disabled) to viewDate() and indexDates. */
 function syncSwitcher() {
   const off = location.protocol === 'file:';
+  const vd = viewDate();
   dateInput.disabled = off;
-  dateInput.value = shownDate || '';
+  if (document.activeElement !== dateInput) dateInput.value = vd || '';   // don't fight typing
   if (indexDates) {
     dateInput.min = indexDates.reduce((a, b) => (b < a ? b : a));
     dateInput.max = indexDates.reduce((a, b) => (b > a ? b : a));
@@ -826,7 +879,7 @@ function syncSwitcher() {
     dateInput.removeAttribute('min');
     dateInput.removeAttribute('max');
   }
-  const pv = prevIndexDate(shownDate), nx = nextIndexDate(shownDate);
+  const pv = prevIndexDate(vd), nx = nextIndexDate(vd);
   datePrev.disabled = off || pv === null;
   dateNext.disabled = off || nx === null;
   datePrev.title = off ? 'Date switching needs the page served over http' : pv ? 'Previous forecast: ' + pv : 'No earlier forecast';
@@ -842,22 +895,138 @@ function setUrlDate(date) {
   } catch (e) { console.warn('Could not update URL:', e); }
 }
 
-/** User-driven day change: URL first, then load (loadDay sets shownDate, which syncs the switcher). */
-function pickDate(date) {
-  setUrlDate(date);
-  loadDay(date);
+/**
+ * The one entry point that changes the day. src: 'switcher' | 'slider' | 'play' | 'init'.
+ * Anything but playback itself pauses playback; init leaves the URL alone.
+ * Resolves 'ok' | 'fail' | 'stale' (see loadDay).
+ */
+function pickDate(date, src) {
+  if (src !== 'play') stopPlayback();
+  if (src !== 'init') setUrlDate(date);
+  ensureInRange(date);
+  return loadDay(date);
 }
-datePrev.addEventListener('click', () => { const d = prevIndexDate(shownDate); if (d) pickDate(d); });
-dateNext.addEventListener('click', () => { const d = nextIndexDate(shownDate); if (d) pickDate(d); });
+/** Batch 2: a date outside lo..hi resets the range to All. */
+function ensureInRange(date) {}
+
+/** Syncs everything that shows the day: the switcher and the timeline bar. */
+function syncDateUi() {
+  syncSwitcher();
+  syncTimeline();
+}
+
+datePrev.addEventListener('click', () => { const d = prevIndexDate(viewDate()); if (d) pickDate(d, 'switcher'); });
+dateNext.addEventListener('click', () => { const d = nextIndexDate(viewDate()); if (d) pickDate(d, 'switcher'); });
 dateInput.addEventListener('change', () => {
   const v = dateInput.value;
-  if (!DATE_RE.test(v)) { dateInput.value = shownDate || ''; return; }   // empty/partial: restore
-  if (v !== shownDate) pickDate(v);
+  if (!DATE_RE.test(v)) { dateInput.value = viewDate() || ''; return; }   // empty/partial: restore
+  if (v !== viewDate()) pickDate(v, 'switcher');
+});
+
+/* ================= Timeline bar + replay ================= */
+let indexDates = null;   // validated index dates (ascending, unique), or null if the index is unavailable
+// lo/hi are indices into indexDates. Batch 2 (range) narrows them; for now they span every date.
+const replay = {playing: false, dwellMs: 1000, loop: false, lo: 0, hi: -1, timer: 0, token: 0};
+const replayPlay = document.getElementById('replayPlay');
+const replayDwell = document.getElementById('replayDwell');
+const replayLoop = document.getElementById('replayLoop');
+const replaySlider = document.getElementById('replaySlider');
+const replayLabel = document.getElementById('replayLabel');
+const timelineCtl = [replayPlay, replayDwell, replayLoop, replaySlider];
+
+/** Index of the viewed day in indexDates, or -1 (no index, no day, or a gap date). */
+function curIdx() { return indexDates ? indexDates.indexOf(viewDate()) : -1; }
+/** True when the bar can't be used: opened from file:// or no index. */
+function timelineOff() { return location.protocol === 'file:' || !indexDates; }
+
+/** Sync the bar (enabled state, slider, label, button states) to viewDate(), indexDates and replay. */
+function syncTimeline() {
+  const off = timelineOff();
+  const reason = location.protocol === 'file:' ? 'Date switching needs the page served over http' : 'Forecast index could not be loaded';
+  for (const el of timelineCtl) { el.disabled = off; el.title = off ? reason : ''; }
+  const vd = viewDate();
+  if (indexDates && !off) {
+    let i = curIdx();
+    if (i < 0) i = indexDates.indexOf(prevIndexDate(vd));   // gap date: park on the previous forecast day
+    if (i < 0) i = replay.lo;
+    replaySlider.min = replay.lo;
+    replaySlider.max = replay.hi;
+    replaySlider.value = i;
+  }
+  replayLabel.textContent = vd || '—';
+  replaySlider.setAttribute('aria-valuetext', vd || 'no date');
+  replayPlay.setAttribute('aria-pressed', String(replay.playing));
+  replayPlay.textContent = replay.playing ? '❚❚ Pause' : '▶ Play';
+  replayLoop.setAttribute('aria-pressed', String(replay.loop));
+}
+
+/** Stop playback and cancel any pending dwell timer. */
+function stopPlayback() {
+  replay.token++;
+  clearTimeout(replay.timer);
+  replay.playing = false;
+  syncTimeline();
+}
+
+/** Start playing from the viewed day (a gap day: the next forecast day; the range end: the range start). */
+function play() {
+  if (timelineOff()) return;
+  replay.playing = true;
+  const tok = ++replay.token;
+  let i = curIdx();
+  if (i < 0) {
+    i = indexDates.indexOf(nextIndexDate(viewDate()));
+    if (i < replay.lo || i > replay.hi) i = replay.lo;
+  } else if (i >= replay.hi) i = replay.lo;
+  syncTimeline();
+  runFrom(i, tok);
+}
+
+/** Playback loop: show day i (waits for it to load and paint), prefetch the next, dwell, advance. tok cancels it. */
+async function runFrom(i, tok) {
+  try { await runSteps(i, tok); }
+  catch (err) {   // e.g. a paint error: don't leave the button on "Pause" with nothing running
+    console.warn('Playback stopped:', err);
+    if (tok === replay.token) stopPlayback();
+  }
+}
+async function runSteps(i, tok) {
+  for (;;) {
+    const st = await pickDate(indexDates[i], 'play');
+    if (tok !== replay.token || st === 'stale') return;
+    prefetchDay(indexDates[i < replay.hi ? i + 1 : replay.lo]);
+    await new Promise(res => { replay.timer = setTimeout(res, replay.dwellMs); });   // dwellMs read each step
+    if (tok !== replay.token) return;
+    if (i === replay.hi) {
+      if (replay.loop) i = replay.lo;
+      else { stopPlayback(); return; }
+    } else i++;
+  }
+}
+
+replayPlay.addEventListener('click', () => { if (replay.playing) stopPlayback(); else play(); });
+replayDwell.addEventListener('change', () => {
+  const s = parseFloat(replayDwell.value);
+  if (s > 0) replay.dwellMs = s * 1000;
+  syncDateUi();
+});
+replayLoop.addEventListener('click', () => { replay.loop = !replay.loop; syncDateUi(); });
+replaySlider.addEventListener('input', () => {
+  const d = indexDates && indexDates[+replaySlider.value];
+  if (d) pickDate(d, 'slider');
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== ' ' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  const t = e.target;
+  if (t && t.closest && t.closest('textarea,select,button,a,summary,[contenteditable]')) return;
+  if (t && t.tagName === 'INPUT' && t.type !== 'range') return;
+  if (timelineOff()) return;
+  e.preventDefault();
+  if (replay.playing) stopPlayback(); else play();
 });
 
 /* ================= Forecast loader ================= */
 let reqToken = 0;        // monotonically increasing; a response from an older request is dropped
-let indexDates = null;   // validated index dates, or null if the index is unavailable
 
 /** fetch + parse JSON. Rejects with err.kind = 'fetch' (network), 'http' (non-OK) or 'parse' (bad JSON). */
 async function fetchJson(url) {
@@ -873,26 +1042,51 @@ function validRose(r) {
   return Array.isArray(r) && r.length === 24 && r.every(v => Number.isInteger(v) && v >= 0 && v <= 10);
 }
 
-/** Load and show one day (YYYY-MM-DD). Safe to call repeatedly; only the latest call's result is applied. */
+const dayCache = new Map();   // date -> Promise<{ok:true,d}|{ok:false,msg}>; never rejects
+
+/** Fetch + validate one day file. Cached per date; failed lookups are dropped from the cache so they can retry. */
+function fetchDay(date) {
+  const hit = dayCache.get(date);
+  if (hit) return hit;
+  const p = (async () => {
+    let d;
+    try { d = await fetchJson(dayUrl(date)); }
+    catch (err) {
+      console.warn('Day file', date, err);
+      return {ok: false, msg: err.kind === 'parse' ? 'Forecast data malformed'
+        : err.status === 404 ? 'Forecast file missing for ' + date : 'Forecast could not be loaded'};
+    }
+    if (!d || typeof d !== 'object' || !validRose(d.overall_danger_rose) || d.date !== date) {
+      return {ok: false, msg: 'Forecast data malformed'};
+    }
+    return {ok: true, d};
+  })();
+  dayCache.set(date, p);
+  p.then(r => { if (!r.ok && dayCache.get(date) === p) dayCache.delete(date); });
+  return p;
+}
+/** Warm the cache for a day; the result is ignored. */
+function prefetchDay(date) { if (date) fetchDay(date); }
+
+/**
+ * Show one day (YYYY-MM-DD). The previous day stays on screen (no blanking) until the new one is ready.
+ * Only the latest call's result is applied. Resolves 'ok' | 'fail' | 'stale' once painted.
+ */
 async function loadDay(date) {
   const token = ++reqToken;
-  setDay(null, date, 'Loading forecast\u2026');
-  if (indexDates && !indexDates.includes(date)) { setDay(null, date, 'No forecast for this date'); return; }
-  let d;
-  try { d = await fetchJson(dayUrl(date)); }
-  catch (err) {
-    if (token !== reqToken) return;
-    console.warn('Day file', date, err);
-    setDay(null, date, err.kind === 'parse' ? 'Forecast data malformed'
-      : err.status === 404 ? 'Forecast file missing for ' + date : 'Forecast could not be loaded');
-    return;
+  pendingDate = date;
+  syncDateUi();
+  document.getElementById('roseDate').textContent = 'Loading forecast\u2026';
+  if (indexDates && !indexDates.includes(date)) {
+    pendingDate = null;
+    await setDay(null, date, 'No forecast for this date');
+    return 'fail';
   }
-  if (token !== reqToken) return;
-  if (!d || typeof d !== 'object' || !validRose(d.overall_danger_rose) || d.date !== date) {
-    setDay(null, date, 'Forecast data malformed');
-    return;
-  }
-  setDay(d, date, '');
+  const r = await fetchDay(date);
+  if (token !== reqToken) return 'stale';
+  pendingDate = null;
+  await setDay(r.ok ? r.d : null, date, r.ok ? '' : r.msg);
+  return r.ok ? 'ok' : 'fail';
 }
 
 async function initForecast() {
@@ -933,10 +1127,15 @@ async function initForecast() {
     console.warn('Forecast index unavailable:', err);
     addNotice('Forecast index could not be loaded.');
   }
-  syncSwitcher();
+  if (indexDates) {
+    indexDates = [...new Set(indexDates)].sort();   // ascending, no duplicates (ISO strings sort correctly)
+    replay.lo = 0;
+    replay.hi = indexDates.length - 1;
+  }
+  syncDateUi();
   if (reqToken !== initToken) return;
-  if (indexDates) loadDay(reqDate || indexDates[indexDates.length - 1]);
-  else if (reqDate) loadDay(reqDate);
+  if (indexDates) pickDate(reqDate || indexDates[indexDates.length - 1], 'init');
+  else if (reqDate) pickDate(reqDate, 'init');
   else setDay(null, null, 'No forecast available');
 }
 initForecast();

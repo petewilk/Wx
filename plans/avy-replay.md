@@ -6,7 +6,7 @@ Adds a timeline bar to `avy_map.html` for playing the forecast days in a date ra
 
 | # | Batch | Agents | Description | Status |
 |---|-------|--------|-------------|--------|
-| 1 | Timeline bar and playback | architect, implementer, qa-validator | Bar below the map with play/pause, dwell time, loop and the day slider over all forecast days; wait-then-dwell playback; no blanking between days; hover readout kept across days. | Not started |
+| 1 | Timeline bar and playback | architect, implementer, qa-validator | Bar below the map with play/pause, dwell time, loop and the day slider over all forecast days; wait-then-dwell playback; no blanking between days; hover readout kept across days. | Done |
 | 2 | Range, URL and saved settings | implementer, qa-validator | Start/End pickers and All; slider limited to the range; `?from=&to=`; dwell and loop in localStorage. | Not started |
 | 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Not started |
 
@@ -98,4 +98,16 @@ None.
 
 ## Batch notes
 
-(none yet)
+### Batch 1 (done 2026-11-22)
+- **State:** `replay = {playing, dwellMs, loop, lo, hi, timer, token}` in `avy_map.html`. `lo`/`hi` are indices into `indexDates` (sorted and deduped on load), set to the full span after the index loads. **Batch 2 seam:** change `lo`/`hi`, then call `syncTimeline()`; fill in the `ensureInRange(date)` stub ("outside the range resets to All").
+- **One entry point:** `pickDate(date, src)` with `src` = `'switcher' | 'slider' | 'play' | 'init'`. It stops playback (except for `'play'`), writes `?date=` (except for `'init'`), calls `ensureInRange`, and returns `loadDay(date)`, which resolves to `'ok' | 'fail' | 'stale'`.
+- **Day shown vs. day asked for:** `shownDate` is the day whose data is on screen. `pendingDate` is the day asked for, and `viewDate()` returns `pendingDate ?? shownDate`. The switcher, slider and label all show `viewDate()`. `syncDateUi()` runs `syncSwitcher()` and `syncTimeline()`.
+- **No blanking:** `loadDay` sets only the "Loading forecast…" status line and keeps the old colors until the day loads. A date that isn't in the index still blanks, on purpose. `dayCache` (date → promise) keeps day files for the page's lifetime and drops failed loads; `prefetchDay` runs during each dwell.
+- **Paint wait:** `setDay` returns `danger.repaint()`'s promise, which covers tiles whose terrain was evicted from the cache and is capped at 10 s. Tiles still loading through `createTile` are not waited for; they paint the newest day when their terrain arrives.
+- **Play start:** Play starts from the current day. On a gap day it starts from the next forecast day; on the last day of the range it starts from the range start.
+- **Hover readout:** `lastLatLng` is cleared only on `mouseout`. `refreshReadout()` re-runs `lookup` after each day change, and also once terrain finishes loading.
+- **For Batch 3:**
+  - `<output id="replayLabel">` is implicitly `aria-live`, so it will announce every day during playback, and `#roseDate` (`role=status`) announces "Loading forecast…" on each step.
+  - While the index is loading, the bar's title says "Forecast index could not be loaded", which is briefly wrong.
+  - Space also toggles playback when a range input has focus.
+  - The file:// state was checked in code only. The browser pane renders local files as `data:`, so it couldn't be tested there.
