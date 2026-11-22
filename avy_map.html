@@ -80,7 +80,7 @@
 <body>
 <header>
   <h1>Avalanche Rose Map</h1>
-  <div class="disc">Prototype using sample archived forecasts (Salt Lake). Not for travel decisions.</div>
+  <div class="disc" id="disc">Prototype using sample archived forecasts (Salt Lake). Not for travel decisions.</div>
   <details class="about">
     <summary>About this map</summary>
     <p>Colors come from the Utah Avalanche Center (UAC) overall danger rose for the day shown. Each spot is colored by its elevation band and the direction its slope faces. Slope-weighted fades the color in between 25&deg; and 35&deg; slopes; All terrain colors everything except nearly flat ground. Hatched stripes mean &ldquo;pockets of&rdquo; the next danger level up. The data are sample archived forecasts, not for travel decisions. See the <a href="https://utahavalanchecenter.org/forecast/salt-lake" target="_blank" rel="noopener">current UAC forecast &#8599;</a>.</p>
@@ -116,11 +116,16 @@
  * Odd values mean "pockets of" level v+1 over base level v-1 (1 = pockets of Low over no rating).
  * They are drawn as diagonal stripes: base color = level v-1, stripes = level v+1.
  * Pages must be served over http(s); fetch() of the JSON files does not work from file://.
+ * Served from localhost, the page first tries data/avy-local/{center}/{slug}/ (same layout, written by
+ * tools/fetch_uac_roses.py from the UAC emails, git-ignored, never deployed) and falls back to the
+ * data/avy/ samples when that folder has no index.json. Other hosts only read data/avy/.
  */
 const ZONE = {center: 'uac', slug: 'salt-lake', name: 'Salt Lake', id: 1738};   // id: top-level feature id in the map-layer API (fallback match)
-const DATA_DIR = 'data/avy/' + ZONE.center + '/' + ZONE.slug + '/';
-const INDEX_URL = DATA_DIR + 'index.json';
-function dayUrl(date) { return DATA_DIR + date + '.json'; }
+const SAMPLE_DIR = 'data/avy/' + ZONE.center + '/' + ZONE.slug + '/';
+const LOCAL_DIR = 'data/avy-local/' + ZONE.center + '/' + ZONE.slug + '/';
+const IS_LOCAL_HOST = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+let dataDir = SAMPLE_DIR;   // folder the index came from; day files load from the same folder
+function dayUrl(date) { return dataDir + date + '.json'; }
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** YYYY-MM-DD that is also a real calendar day (rejects 2025-02-31). */
 const isDate = s => DATE_RE.test(s) && !isNaN(Date.parse(s + 'T00:00:00Z')) && new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) === s;
@@ -902,12 +907,27 @@ async function initForecast() {
   }
   setDay(null, reqDate, 'Loading forecast\u2026');
   const initToken = reqToken;   // a pick made while the index loads must win over the default day
-  try {
-    const idx = await fetchJson(INDEX_URL);
-    if (!idx || !Array.isArray(idx.dates) || idx.dates.length === 0 ||
-        !idx.dates.every(x => typeof x === 'string' && DATE_RE.test(x))) {
-      throw new Error('bad index');
+  const validIndex = idx => idx && Array.isArray(idx.dates) && idx.dates.length > 0 &&
+    idx.dates.every(x => typeof x === 'string' && DATE_RE.test(x));
+  if (IS_LOCAL_HOST) {
+    try {
+      const idx = await fetchJson(LOCAL_DIR + 'index.json');
+      if (!validIndex(idx)) throw new Error('bad local index');
+      indexDates = idx.dates;
+      dataDir = LOCAL_DIR;
+      document.getElementById('disc').textContent =
+        'Local forecasts decoded from UAC emails (Salt Lake). Not for travel decisions.';
+    } catch (err) {
+      // No local data yet (404) is normal: use the samples. Anything else is worth a notice.
+      if (err.status !== 404) {
+        console.warn('Local forecast index unusable:', err);
+        addNotice('Local forecasts could not be loaded; showing samples.');
+      }
     }
+  }
+  if (!indexDates) try {
+    const idx = await fetchJson(SAMPLE_DIR + 'index.json');
+    if (!validIndex(idx)) throw new Error('bad index');
     indexDates = idx.dates;
   } catch (err) {
     console.warn('Forecast index unavailable:', err);
