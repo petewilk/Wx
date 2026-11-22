@@ -6,9 +6,9 @@ Adds a timeline bar to `avy_map.html` for playing the forecast days in a date ra
 
 | # | Batch | Agents | Description | Status |
 |---|-------|--------|-------------|--------|
-| 1 | Timeline bar and playback | architect, implementer, qa-validator | Bar below the map with play/pause, dwell time, loop and the day slider over all forecast days; wait-then-dwell playback; no blanking between days; hover readout kept across days. | Not started |
-| 2 | Range, URL and saved settings | implementer, qa-validator | Start/End pickers and All; slider limited to the range; `?from=&to=`; dwell and loop in localStorage. | Not started |
-| 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Not started |
+| 1 | Timeline bar and playback | architect, implementer, qa-validator | Bar below the map with play/pause, dwell time, loop and the day slider over all forecast days; wait-then-dwell playback; no blanking between days; hover readout kept across days. | Done |
+| 2 | Range, URL and saved settings | implementer, qa-validator | Start/End pickers and All; slider limited to the range; `?from=&to=`; dwell and loop in localStorage. | Done |
+| 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Done (merge pending the user's OK) |
 
 Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
 
@@ -98,4 +98,45 @@ None.
 
 ## Batch notes
 
-(none yet)
+### Batch 1 (done 2026-11-22)
+- **State:** `replay = {playing, dwellMs, loop, lo, hi, timer, token}` in `avy_map.html`. `lo`/`hi` are indices into `indexDates` (sorted and deduped on load), set to the full span after the index loads. **Batch 2 seam:** change `lo`/`hi`, then call `syncTimeline()`; fill in the `ensureInRange(date)` stub ("outside the range resets to All").
+- **One entry point:** `pickDate(date, src)` with `src` = `'switcher' | 'slider' | 'play' | 'init'`. It stops playback (except for `'play'`), writes `?date=` (except for `'init'`), calls `ensureInRange`, and returns `loadDay(date)`, which resolves to `'ok' | 'fail' | 'stale'`.
+- **Day shown vs. day asked for:** `shownDate` is the day whose data is on screen. `pendingDate` is the day asked for, and `viewDate()` returns `pendingDate ?? shownDate`. The switcher, slider and label all show `viewDate()`. `syncDateUi()` runs `syncSwitcher()` and `syncTimeline()`.
+- **No blanking:** `loadDay` sets only the "Loading forecast…" status line and keeps the old colors until the day loads. A date that isn't in the index still blanks, on purpose. `dayCache` (date → promise) keeps day files for the page's lifetime and drops failed loads; `prefetchDay` runs during each dwell.
+- **Paint wait:** `setDay` returns `danger.repaint()`'s promise, which covers tiles whose terrain was evicted from the cache and is capped at 10 s. Tiles still loading through `createTile` are not waited for; they paint the newest day when their terrain arrives.
+- **Play start:** Play starts from the current day. On a gap day it starts from the next forecast day; on the last day of the range it starts from the range start.
+- **Hover readout:** `lastLatLng` is cleared only on `mouseout`. `refreshReadout()` re-runs `lookup` after each day change, and also once terrain finishes loading.
+- **For Batch 3:**
+  - `<output id="replayLabel">` is implicitly `aria-live`, so it will announce every day during playback, and `#roseDate` (`role=status`) announces "Loading forecast…" on each step.
+  - While the index is loading, the bar's title says "Forecast index could not be loaded", which is briefly wrong.
+  - Space also toggles playback when a range input has focus.
+  - The file:// state was checked in code only. The browser pane renders local files as `data:`, so it couldn't be tested there.
+
+### Batch 2 (done 2026-11-22)
+- **One setter:** `setRange(from, to, opts)` takes YYYY-MM-DD or null (open end). It swaps, snaps inward, and keeps the previous range with a 4 s `#replayMsg` message when the range is empty. It pauses playback only if lo/hi changed, writes `?from=&to=` (both removed when All), and moves to the range start if the viewed day is outside. `opts.init` skips the message, pause and day change; an empty URL range falls back to All silently.
+- **`ensureInRange(date)`:** a date outside `indexDates[lo]..[hi]` (string compare) resets to All. A gap date typed as a range end is "outside" once snapped, so it resets too, as the spec says.
+- **URL:** `?from=` and `?to=` are validated separately. An invalid one is dropped and that end is open, so `?to=X` alone means first..X. With no `?date=`, the first day shown is `indexDates[hi]`.
+- **Settings:** `restoredDwell()` / `restoredLoop()` sit beside the other `restored*` helpers.
+- **From/To inputs:** `change` is ignored while the year is under 1000, because Chrome fires `change` on each digit of a typed year. `setRange` writes both inputs even when one has focus, so a snap or swap shows at once.
+- **For Batch 3:**
+  - `#replayMsg` is `role=status`, so it announces the "No forecasts between…" message.
+  - At ≤520px the date inputs share the first row. Check that the bar stays two rows at most and doesn't cover the rose panel.
+  - Tested in the browser with local data only. The sample data set was checked by reading the snapping logic, not in the browser.
+
+### Batch 3 (done 2026-11-22)
+- **Accessibility:**
+  - `#replayLabel` is `aria-live="off"`. The hidden `#replayAnnounce` (`announce()`) says "Playing", "Paused at …", and the day after manual changes. It is quiet during playback, and `#roseDate` is `aria-live=off` while playing.
+  - Play no longer uses `aria-pressed`; its state shows in the Play/Pause text and the `.on` class.
+- **Phone:** on coarse pointers at ≤520px, the bar's date inputs and select use 16px text (iOS zoom) and the controls are 44px tall. The bar wraps to 3 rows below the map. `#replayMsg` is a warn-colored overlay above the bar for 6 s and covers the bottom of the rose legend while it shows.
+- **QA fixes:**
+  - The bar's title says "Loading forecast index…" until the index fails (`indexFailed`).
+  - Play's tooltip is kept via `data-title`.
+  - `pointerdown` on the slider pauses playback.
+- **Checked in the browser:**
+  - The sample data set (via the LAN address), including a range on the 2025-02-12 gap.
+  - Phone in light and dark mode.
+- **Left as is:**
+  - Space toggles playback when the opacity slider has focus.
+  - `dayCache` is keyed by date only. This is harmless while the local and sample date sets don't overlap.
+  - No visible From/To labels: `aria-label` only, to keep the phone bar at 3 rows.
+
