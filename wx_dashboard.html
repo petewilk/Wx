@@ -850,12 +850,24 @@ function loadSavedPlaces() {
   try {
     var a = JSON.parse(localStorage.getItem(PLACES_KEY));
     if (!Array.isArray(a)) return [];
+    var seen = {};
     return a.map(function(o) {
       var v = o && validPlace(o.lat, o.lon, o.label);
       if (v) v.tags = cleanTags(o.tags);   // lists saved before tags existed simply have none
+      if (v && seen[v.lat + ',' + v.lon]) return null;   // one place per coordinate, as addPlace enforces
+      if (v) seen[v.lat + ',' + v.lon] = true;
       return v;
     }).filter(Boolean).slice(0, MAX_PLACES);
   } catch (e) { return []; }
+}
+
+// 'ok' when storage holds a readable list (even an empty one), 'none' when it has no list or
+// can't be read, 'bad' when the stored value is corrupt
+function placesStoreState() {
+  var raw;
+  try { raw = localStorage.getItem(PLACES_KEY); } catch (e) { return 'none'; }
+  if (raw === null) return 'none';
+  try { return Array.isArray(JSON.parse(raw)) ? 'ok' : 'bad'; } catch (e) { return 'bad'; }
 }
 
 // ── Share link: the place list packed into the URL fragment ────────────────
@@ -951,12 +963,105 @@ function cleanTags(t) {
 }
 
 function savePlaces() {
+  var ok = false;
   try {
     localStorage.setItem(PLACES_KEY, JSON.stringify(PLACES.map(function(p) {
       return { lat: p.lat, lon: p.lon, label: p.label, tags: p.tags };
     })));
+    ok = true;
+  } catch (e) {}
+  writeSavedHash();
+  if (ok) requestPersist();
+}
+
+// ── Backups against lost storage ───────────────────────────────────────────
+// The address bar carries the list as #saved=<same packing as share links>, so a bookmark or
+// history entry restores it if the browser has cleared this site's storage. Unlike #places=,
+// it never replaces a list that is still in storage.
+function writeSavedHash() {
+  try {
+    var h = PLACES.length ? '#saved=' + encodePlaces(PLACES) : '';
+    if (location.hash !== h) history.replaceState(history.state, '', location.pathname + location.search + h);
   } catch (e) {}
 }
+
+// Places from #saved=, only when storage has no readable list (never written, cleared, or corrupt)
+function placesFromSavedHash() {
+  var m = /[#&]saved=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!m || placesStoreState() === 'ok') return null;
+  return decodePlaces(m[1]);
+}
+
+// Ask once per visit that the browser exempt this site from storage-pressure eviction
+var persistAsked = false;
+function requestPersist() {
+  if (persistAsked) return;
+  persistAsked = true;
+  try {
+    var s = navigator.storage;
+    if (!s || !s.persist || !s.persisted) return;
+    s.persisted().then(function(yes) { if (!yes) return s.persist(); }).catch(function() {});
+  } catch (e) {}
+}
+
+// ── Cross-tab sync ─────────────────────────────────────────────────────────
+// Every edit saves this tab's whole list, so a tab left open with an old list would erase places
+// added elsewhere. Adopt the stored list whenever another tab changes it or this tab comes back.
+var syncPending = false;   // a change arrived mid-drag; endDrag applies it
+
+function syncPlacesFromStorage() {
+  if (drag) { syncPending = true; return; }
+  syncPending = false;
+  var state = placesStoreState();
+  if (state !== 'ok') {   // cleared or corrupt: keep this tab's list and write it back
+    if (PLACES.length) savePlaces();
+    return;
+  }
+  var stored = loadSavedPlaces();
+  if (encodePlaces(stored) === encodePlaces(PLACES)) return;
+  function key(o) { return o.lat + ',' + o.lon; }
+  var have = {}, want = {};
+  PLACES.forEach(function(p) { have[key(p)] = p; });
+  stored.forEach(function(o) { want[key(o)] = true; });
+  PLACES.forEach(function(p) {
+    if (want[key(p)]) return;
+    p.removed = true;
+    if (p.el && p.el.root.parentNode) p.el.root.parentNode.removeChild(p.el.root);
+    mapDrop(p);
+  });
+  var cards = document.getElementById('cards'), added = [];
+  PLACES = stored.map(function(o) {
+    var p = have[key(o)];
+    if (!p) {
+      p = makePlace(o);
+      added.push(p);
+      cards.appendChild(buildCard(p));
+      return p;
+    }
+    if (p.label !== o.label) {
+      p.label = o.label;
+      showLabel(p);
+      if (p.mk && MAPS.layer) { MAPS.layer.removeLayer(p.mk); p.mk = null; p.mkHtml = ''; }   // rebuilt with the new title
+    }
+    if (p === MAPS.exempt && p.tags.join() !== o.tags.join()) MAPS.exempt = null;   // as in toggleTag
+    p.tags = o.tags;
+    syncTagBtns(p);
+    return p;
+  });
+  renderAll();
+  mapSync();
+  added.forEach(loadPlace);
+  updateStamp();
+  writeSavedHash();
+}
+
+window.addEventListener('storage', function(e) {
+  if (e.key === PLACES_KEY || e.key === null) syncPlacesFromStorage();
+});
+window.addEventListener('pageshow', function(e) { if (e.persisted) syncPlacesFromStorage(); });
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') syncPlacesFromStorage();
+});
 
 function loadPrefs() {
   try {
@@ -2288,7 +2393,8 @@ function endDrag() {
   drag = null;
   clearInterval(d.timer);
   PLACES.forEach(function(q) { q.el.root.classList.remove('dragging', 'drop-before', 'drop-after'); });
-  if (!d.target) return;
+  if (syncPending) syncPlacesFromStorage();   // another tab changed the list mid-drag: adopt it before saving
+  if (!d.target || d.p.removed || d.target.removed) return;
   PLACES = PLACES.filter(function(q) { return q !== d.p; });
   var at = PLACES.indexOf(d.target) + (d.after ? 1 : 0);
   PLACES.splice(at, 0, d.p);
@@ -3217,12 +3323,12 @@ function startRename(p) {
   inp.value = p.label;
   inp.maxLength = 60;
   inp.setAttribute('aria-label', 'Place name');
-  var done = false;
+  var done = false, orig = p.label;
   function finish(save) {
     if (done) return;
     done = true;
     var v = inp.value.trim();
-    if (save && v && v !== p.label) {
+    if (save && v && v !== orig && v !== p.label) {   // untouched text doesn't undo a rename from another tab
       p.label = v;
       savePlaces();
       showLabel(p);
@@ -4036,7 +4142,10 @@ setInterval(function() {
   loadPrefs();
   applyRowH();
   var saved = loadSavedPlaces(), linked = placesFromLink(saved);
-  var list = linked || saved;
+  var restored = linked ? null : placesFromSavedHash();
+  if (restored) setStatus('Restored ' + restored.length + ' place' + (restored.length === 1 ? '' : 's') +
+                          ' from this page’s address');
+  var list = linked || restored || saved;
   if (!list.length) list = [validPlace(DEFAULT_PLACE.lat, DEFAULT_PLACE.lon, DEFAULT_PLACE.label)];
   syncSegs();
   var c = document.getElementById('cards');
@@ -4045,7 +4154,9 @@ setInterval(function() {
     PLACES.push(p);
     c.appendChild(buildCard(p));
   });
-  if (linked) savePlaces();
+  // Keep a #saved= backup in the address bar unless storage gave us nothing to replace it with
+  if (linked || restored) savePlaces();
+  else if (saved.length || !/[#&]saved=/.test(location.hash)) writeSavedHash();
   var g = document.getElementById('grid');
   g.style.setProperty('--cols', DAYS);
   g.style.setProperty('--gw', g.clientWidth + 'px');
