@@ -44,6 +44,8 @@ A day with no forecast has no file and isn't in the index. The date switcher ski
 
 Add `?date=YYYY-MM-DD` to the URL to open a specific day, for example `avy_map.html?date=2025-02-11`. The switcher keeps it up to date. A missing or invalid date opens the newest day.
 
+The bar below the map replays the forecast days only, skipping gap days. It has play/pause (Space also toggles), seconds per day (2, 1, 0.5 or 0.25), Loop and a day slider. Start, End and All limit the range. `?from=YYYY-MM-DD&to=YYYY-MM-DD` keeps the range in the URL: invalid values are dropped, and a `?date=` outside the range resets it to All. Seconds per day and Loop are remembered in the browser. The page always opens paused.
+
 `deploy.sh` also ships the git-tracked `data/avy` JSON files, so commit new day files and the updated `index.json` before deploying. The page is deployed but not linked from the site.
 
 ### Local forecasts from UAC emails

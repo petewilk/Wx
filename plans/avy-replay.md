@@ -8,7 +8,7 @@ Adds a timeline bar to `avy_map.html` for playing the forecast days in a date ra
 |---|-------|--------|-------------|--------|
 | 1 | Timeline bar and playback | architect, implementer, qa-validator | Bar below the map with play/pause, dwell time, loop and the day slider over all forecast days; wait-then-dwell playback; no blanking between days; hover readout kept across days. | Done |
 | 2 | Range, URL and saved settings | implementer, qa-validator | Start/End pickers and All; slider limited to the range; `?from=&to=`; dwell and loop in localStorage. | Done |
-| 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Not started |
+| 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Done (merge pending the user's OK) |
 
 Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
 
@@ -122,4 +122,21 @@ None.
   - `#replayMsg` is `role=status`, so it announces the "No forecasts between…" message.
   - At ≤520px the date inputs share the first row. Check that the bar stays two rows at most and doesn't cover the rose panel.
   - Tested in the browser with local data only. The sample data set was checked by reading the snapping logic, not in the browser.
+
+### Batch 3 (done 2026-11-22)
+- **Accessibility:**
+  - `#replayLabel` is `aria-live="off"`. The hidden `#replayAnnounce` (`announce()`) says "Playing", "Paused at …", and the day after manual changes. It is quiet during playback, and `#roseDate` is `aria-live=off` while playing.
+  - Play no longer uses `aria-pressed`; its state shows in the Play/Pause text and the `.on` class.
+- **Phone:** on coarse pointers at ≤520px, the bar's date inputs and select use 16px text (iOS zoom) and the controls are 44px tall. The bar wraps to 3 rows below the map. `#replayMsg` is a warn-colored overlay above the bar for 6 s and covers the bottom of the rose legend while it shows.
+- **QA fixes:**
+  - The bar's title says "Loading forecast index…" until the index fails (`indexFailed`).
+  - Play's tooltip is kept via `data-title`.
+  - `pointerdown` on the slider pauses playback.
+- **Checked in the browser:**
+  - The sample data set (via the LAN address), including a range on the 2025-02-12 gap.
+  - Phone in light and dark mode.
+- **Left as is:**
+  - Space toggles playback when the opacity slider has focus.
+  - `dayCache` is keyed by date only. This is harmless while the local and sample date sets don't overlap.
+  - No visible From/To labels: `aria-label` only, to keep the phone bar at 3 rows.
 

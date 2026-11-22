@@ -55,3 +55,9 @@ A forecast day whose rose was entered by hand from UAC's archive, marked `"sampl
 
 **Gap day**
 A date with no forecast file, so it isn't in the index. The date switcher skips it, and picking it shows "No forecast for this date".
+
+**Replay range**
+The forecast days between Start and End that the day slider and playback cover. A Start or End on a gap day snaps inward to the nearest forecast day. All runs from the first forecast to the last.
+
+**Dwell time**
+How long playback shows each day once it is loaded and painted, in seconds per day (2, 1, 0.5 or 0.25).

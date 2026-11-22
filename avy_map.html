@@ -29,8 +29,13 @@
   #timeline button:disabled,#timeline select:disabled,#timeline input:disabled{opacity:.4;cursor:not-allowed}
   #timeline button:focus-visible,#timeline select:focus-visible,#timeline input:focus-visible{outline:2px solid var(--text);outline-offset:2px}
   #timeline input[type=date]{min-height:32px;padding:0 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:12px system-ui,sans-serif;color-scheme:var(--cs)}
-  #replayMsg{font-size:12px;color:var(--text)}
+  #timeline{position:relative}
+  #replayMsg{position:absolute;bottom:100%;left:8px;right:8px;width:max-content;max-width:calc(100% - 16px);margin-bottom:4px;padding:3px 8px;
+    background:var(--surface);color:var(--warn);border:1px solid var(--warn);border-radius:4px;font-size:12px;z-index:1001}
   #replayMsg:empty{display:none}
+  #timeline #replayPlay.on{background:var(--accent);color:var(--btn-on-text);font-weight:700}
+  #timeline button:hover:not(:disabled){border-color:var(--accent)}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   #replayPlay{min-width:72px}
   #replaySlider{flex:1 1 120px;min-width:120px;min-height:32px;accent-color:var(--accent);margin:0}
   #replayLabel{min-width:6.5em;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
@@ -72,7 +77,6 @@
     #timeline{padding:6px 8px;gap:4px 6px}
     #replaySlider{flex-basis:100%;order:5}
     #replayLabel{order:4;margin-left:auto}
-    #replayMsg{order:6;flex-basis:100%}
     #timeline input[type=date]{min-width:0;flex:1 1 110px}
     #rose{width:188px;padding:6px;bottom:24px}
     #rose text{font-size:17px}
@@ -90,6 +94,10 @@
   @media (max-width:520px) and (pointer:coarse){
     #rose .dsw input{font-size:16px;padding:0 2px}
     #rose .dsw input::-webkit-calendar-picker-indicator{display:none}
+    #timeline input[type=date],#timeline select{font-size:16px}   /* iOS zooms on focus below 16px */
+    #timeline input[type=date]{-webkit-text-fill-color:var(--text)}
+    #timeline input[type=date]::-webkit-calendar-picker-indicator{display:none}
+    #timeline button,#timeline input[type=date],#timeline select,#replaySlider{min-height:44px}
   }
   @media (max-height:520px){#rose svg{max-height:30dvh;width:auto;margin:0 auto}}
 </style>
@@ -100,7 +108,7 @@
   <div class="disc" id="disc">Prototype using sample archived forecasts (Salt Lake). Not for travel decisions.</div>
   <details class="about">
     <summary>About this map</summary>
-    <p>Colors come from the Utah Avalanche Center (UAC) overall danger rose for the day shown. Each spot is colored by its elevation band and the direction its slope faces. Slope-weighted fades the color in between 25&deg; and 35&deg; slopes; All terrain colors everything except nearly flat ground. Hatched stripes mean &ldquo;pockets of&rdquo; the next danger level up. The data are sample archived forecasts, not for travel decisions. See the <a href="https://utahavalanchecenter.org/forecast/salt-lake" target="_blank" rel="noopener">current UAC forecast &#8599;</a>.</p>
+    <p>Colors come from the Utah Avalanche Center (UAC) overall danger rose for the day shown. Each spot is colored by its elevation band and the direction its slope faces. Slope-weighted fades the color in between 25&deg; and 35&deg; slopes; All terrain colors everything except nearly flat ground. Hatched stripes mean &ldquo;pockets of&rdquo; the next danger level up. The bar below the map plays the forecast days in a chosen range. The data are sample archived forecasts, not for travel decisions. See the <a href="https://utahavalanchecenter.org/forecast/salt-lake" target="_blank" rel="noopener">current UAC forecast &#8599;</a>.</p>
   </details>
 </header>
 <div id="notice" hidden></div>
@@ -125,7 +133,8 @@
   <input type="date" id="replayTo" aria-label="Replay end">
   <button type="button" id="replayAll" aria-pressed="true">All</button>
   <span id="replayMsg" role="status"></span>
-  <button type="button" id="replayPlay" aria-pressed="false">&#9654; Play</button>
+  <div id="replayAnnounce" class="sr-only" role="status" aria-atomic="true"></div>
+  <button type="button" id="replayPlay" data-title="Play/pause (Space)" title="Play/pause (Space)" aria-keyshortcuts="Space">&#9654; Play</button>
   <select id="replayDwell" aria-label="Seconds per day">
     <option value="2">2 s/day</option>
     <option value="1" selected>1 s/day</option>
@@ -134,7 +143,7 @@
   </select>
   <button type="button" id="replayLoop" aria-pressed="false">Loop</button>
   <input type="range" id="replaySlider" min="0" max="0" step="1" value="0" aria-label="Forecast day">
-  <output id="replayLabel" for="replaySlider">&mdash;</output>
+  <output id="replayLabel" for="replaySlider" aria-live="off">&mdash;</output>
 </div>
 
 <script>
@@ -1025,6 +1034,14 @@ const replayFrom = document.getElementById('replayFrom');
 const replayTo = document.getElementById('replayTo');
 const replayAll = document.getElementById('replayAll');
 const replayMsg = document.getElementById('replayMsg');
+const replayAnnounce = document.getElementById('replayAnnounce');
+const roseDateEl = document.getElementById('roseDate');
+let announcedDate = null;   // last day spoken by the announcer (null until the first day shows, which isn't spoken)
+/** Speak text through the polite, visually hidden announcer. */
+function announce(text) {
+  replayAnnounce.textContent = '';
+  setTimeout(() => { replayAnnounce.textContent = text; }, 0);   // re-set so a repeat is read again
+}
 const timelineCtl = [replayPlay, replayDwell, replayLoop, replaySlider, replayFrom, replayTo, replayAll];
 replay.dwellMs = parseFloat(restoredDwell()) * 1000;   // saved settings; the page always opens paused
 replayDwell.value = restoredDwell();
@@ -1033,13 +1050,15 @@ replay.loop = restoredLoop();
 /** Index of the viewed day in indexDates, or -1 (no index, no day, or a gap date). */
 function curIdx() { return indexDates ? indexDates.indexOf(viewDate()) : -1; }
 /** True when the bar can't be used: opened from file:// or no index. */
+let indexFailed = false;   // set once the index has failed to load (vs. still loading)
 function timelineOff() { return location.protocol === 'file:' || !indexDates; }
 
 /** Sync the bar (enabled state, slider, label, button states) to viewDate(), indexDates and replay. */
 function syncTimeline() {
   const off = timelineOff();
-  const reason = location.protocol === 'file:' ? 'Date switching needs the page served over http' : 'Forecast index could not be loaded';
-  for (const el of timelineCtl) { el.disabled = off; el.title = off ? reason : ''; }
+  const reason = location.protocol === 'file:' ? 'Date switching needs the page served over http'
+    : indexFailed ? 'Forecast index could not be loaded' : 'Loading forecast index\u2026';
+  for (const el of timelineCtl) { el.disabled = off; el.title = off ? reason : (el.dataset.title || ''); }
   const vd = viewDate();
   if (indexDates && !off) {
     let i = curIdx();
@@ -1055,7 +1074,9 @@ function syncTimeline() {
   }
   replayLabel.textContent = vd || '—';
   replaySlider.setAttribute('aria-valuetext', vd || 'no date');
-  replayPlay.setAttribute('aria-pressed', String(replay.playing));
+  replayPlay.classList.toggle('on', replay.playing);   // the Play/Pause text carries the state for screen readers
+  // Announce manual day changes; during playback stay quiet (play/pause announce themselves).
+  if (!replay.playing && vd && vd !== announcedDate) { if (announcedDate !== null) announce(vd); announcedDate = vd; }
   replayPlay.textContent = replay.playing ? '❚❚ Pause' : '▶ Play';
   replayLoop.setAttribute('aria-pressed', String(replay.loop));
 }
@@ -1065,7 +1086,7 @@ let rangeMsgTimer = 0;
 function showRangeMsg(text) {
   clearTimeout(rangeMsgTimer);
   replayMsg.textContent = text;
-  if (text) rangeMsgTimer = setTimeout(() => { replayMsg.textContent = ''; }, 4000);
+  if (text) rangeMsgTimer = setTimeout(() => { replayMsg.textContent = ''; }, 6000);
 }
 
 /**
@@ -1085,7 +1106,7 @@ function setRange(from, to, opts) {
   if (lo > hi) {
     if (init) { lo = 0; hi = n - 1; }
     else {
-      showRangeMsg('No forecasts between ' + (from || indexDates[0]) + ' and ' + (to || indexDates[n - 1]));
+      showRangeMsg('\u26A0 No forecasts between ' + (from || indexDates[0]) + ' and ' + (to || indexDates[n - 1]));
       replayFrom.value = indexDates[replay.lo];   // restore even if an input has focus
       replayTo.value = indexDates[replay.hi];
       return;
@@ -1107,9 +1128,12 @@ function setRange(from, to, opts) {
 
 /** Stop playback and cancel any pending dwell timer. */
 function stopPlayback() {
+  const was = replay.playing;
   replay.token++;
   clearTimeout(replay.timer);
   replay.playing = false;
+  roseDateEl.setAttribute('aria-live', 'polite');
+  if (was) { announcedDate = viewDate(); announce('Paused at ' + (announcedDate || '')); }
   syncTimeline();
 }
 
@@ -1117,6 +1141,8 @@ function stopPlayback() {
 function play() {
   if (timelineOff()) return;
   replay.playing = true;
+  roseDateEl.setAttribute('aria-live', 'off');   // no "Loading forecast…" on every step
+  announce('Playing');
   const tok = ++replay.token;
   let i = curIdx();
   if (i < 0) {
@@ -1164,6 +1190,7 @@ for (const el of [replayFrom, replayTo]) {
   });
 }
 replayAll.addEventListener('click', () => setRange(null, null));
+replaySlider.addEventListener('pointerdown', () => { if (replay.playing) stopPlayback(); });   // touching the slider pauses, even without moving it
 replaySlider.addEventListener('input', () => {
   const d = indexDates && indexDates[+replaySlider.value];
   if (d) pickDate(d, 'slider');
@@ -1283,6 +1310,7 @@ async function initForecast() {
     indexDates = idx.dates;
   } catch (err) {
     console.warn('Forecast index unavailable:', err);
+    indexFailed = true;
     addNotice('Forecast index could not be loaded.');
   }
   if (indexDates) {
