@@ -183,11 +183,18 @@ const LEVELS = {   // by even level value
 };
 const SLOPE_RAMP_LO = 25, SLOPE_RAMP_HI = 35, FLAT_DEG = 5;
 const EARTH_CIRC = 40075016.686;
-const DEM_MAX_Z = 15;
-const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+// Mapterhorn: Terrarium-encoded 512 px WebP tiles to source zoom 16 (USGS 3DEP 1 m lidar over the
+// Wasatch). A 512 px tile at source zoom s covers exactly 4 of our 256 px tiles at zoom s+1, so the
+// overlay is native up to map zoom 17.
+const DEM_SRC_MAX_Z = 16;
+const DEM_MAX_Z = DEM_SRC_MAX_Z + 1;   // in 256 px map tiles
+const DEM_URL = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
+const DEM_SRC_SIZE = 512;
+const DEM_FALLBACK_DEPTH = 3;   // missing source tile -> upsample a parent up to this many zooms up
 const ZONE_URL = 'https://api.avalanche.org/v2/public/products/map-layer/UAC';
 const DEM_CACHE_MAX = 100;   // ~1.2 MB per derived tile; kept small for phones
 const RAW_CACHE_MAX = 150;   // raw tiles only feed neighbours of tiles being derived; ~256 KB each
+const SRC_CACHE_MAX = 32;    // decoded 512 px source tiles; ~1 MB each, each feeds 4 raw tiles
 const HATCH_PERIOD = 12;                   // px along x (or y) between stripe starts; stripe = half
 const SVG_HATCH = 8;                       // rose pattern tile size, SVG units
 
@@ -260,7 +267,7 @@ const cyclo = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}
   attribution: '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases" title="CyclOSM">CyclOSM</a> | Map data &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 });
 map.attributionControl.setPrefix(false);
-map.attributionControl.addAttribution('Elevation: AWS Terrain Tiles (Mapzen)');
+map.attributionControl.addAttribution('Elevation: <a href="https://mapterhorn.com/attribution/" target="_blank" rel="noopener">Mapterhorn</a> (USGS 3DEP, Copernicus)');
 let uacAttrib = null;   // current "Forecast: UAC" attribution string
 function setUacAttribution(date) {   // date null -> UAC home page
   const href = date ? uacForecastUrl(ZONE.slug, date) : 'https://utahavalanchecenter.org/';
@@ -281,38 +288,85 @@ function latOfWorldY(wy, z) {
   return Math.atan(Math.sinh(n)) * 180 / Math.PI;
 }
 
+const srcCache = new Map();   // key -> {promise}; resolves Float32Array(512*512) of elevations (m)
 const rawCache = new Map();   // key -> {promise, data}; data = Float32Array(65536) of elevations (m)
 
 /** Decode a Terrarium image to metres: R*256 + G + B/256 - 32768. */
 function decodeRaw(img) {
+  const S = DEM_SRC_SIZE;
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
+  cv.width = cv.height = S;
   const ctx = cv.getContext('2d', {willReadFrequently: true});
-  ctx.drawImage(img, 0, 0);
-  const px = ctx.getImageData(0, 0, 256, 256).data;
-  const raw = new Float32Array(65536);
-  for (let n = 0; n < 65536; n++) {
+  ctx.drawImage(img, 0, 0, S, S);
+  const px = ctx.getImageData(0, 0, S, S).data;
+  const raw = new Float32Array(S * S);
+  for (let n = 0; n < S * S; n++) {
     const i = n * 4;
     raw[n] = px[i] * 256 + px[i + 1] + px[i + 2] / 256 - 32768;
   }
   return raw;
 }
 
+/** One 512 px source tile at source zoom sz, decoded. Rejects if it fails (e.g. 404 beyond coverage). */
+function loadSrc(sz, sx, sy) {
+  const key = demKey(sz, sx, sy);
+  const hit = srcCache.get(key);
+  if (hit) return hit.promise;
+  const entry = {promise: null};
+  entry.promise = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try { resolve(decodeRaw(img)); }
+      catch (err) { reject(err); }
+    };
+    img.onerror = () => reject(new Error('DEM tile failed: ' + key));
+    img.src = DEM_URL.replace('{z}', sz).replace('{x}', sx).replace('{y}', sy);
+  }).catch(err => { if (srcCache.get(key) === entry) srcCache.delete(key); throw err; });
+  srcCache.set(key, entry);
+  if (srcCache.size > SRC_CACHE_MAX) srcCache.delete(srcCache.keys().next().value);
+  return entry.promise;
+}
+
+/**
+ * Pure: the 256x256 elevations of map tile (z, x, y) cut from a source tile k zooms above its native
+ * source zoom (z-1-k). k = 0 copies a quadrant; k > 0 bilinearly upsamples a (256 >> k) px region.
+ * Fallback only (k > 0): samples clamp at the source tile's edge, so slope is slightly off along
+ * those source-tile seams. Accepted: Mapterhorn has zoom-16 tiles across the Salt Lake zone.
+ */
+function cutRaw(src, z, x, y, k) {
+  const S = DEM_SRC_SIZE, f = 1 << k, span = 256 >> k, per = 1 << (k + 1);
+  const x0 = (x % per) * span, y0 = (y % per) * span;
+  const out = new Float32Array(65536);
+  for (let r = 0; r < 256; r++) {
+    const sy = Math.min(S - 1, Math.max(0, y0 + (r + 0.5) / f - 0.5));
+    const r0 = Math.floor(sy), r1 = Math.min(S - 1, r0 + 1), fy = sy - r0;
+    for (let c = 0; c < 256; c++) {
+      const sx = Math.min(S - 1, Math.max(0, x0 + (c + 0.5) / f - 0.5));
+      const c0 = Math.floor(sx), c1 = Math.min(S - 1, c0 + 1), fx = sx - c0;
+      const top = src[r0 * S + c0] * (1 - fx) + src[r0 * S + c1] * fx;
+      const bot = src[r1 * S + c0] * (1 - fx) + src[r1 * S + c1] * fx;
+      out[r * 256 + c] = top * (1 - fy) + bot * fy;
+    }
+  }
+  return out;
+}
+
+/** 256x256 elevations for map tile (z, x, y); falls back to upsampled parents where a source tile is missing. */
 function loadRaw(z, x, y) {
   const key = demKey(z, x, y);
   const hit = rawCache.get(key);
   if (hit) return hit.promise;
   const entry = {data: null, promise: null};
-  entry.promise = new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try { entry.data = decodeRaw(img); resolve(entry.data); }
-      catch (err) { reject(err); }
-    };
-    img.onerror = () => reject(new Error('DEM tile failed: ' + key));
-    img.src = DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
-  }).catch(err => { if (rawCache.get(key) === entry) rawCache.delete(key); throw err; });
+  const attempt = k => {
+    const sz = z - 1 - k;
+    return loadSrc(sz, x >> (k + 1), y >> (k + 1))
+      .then(src => cutRaw(src, z, x, y, k))
+      .catch(err => { if (k < DEM_FALLBACK_DEPTH && sz > 0) return attempt(k + 1); throw err; });
+  };
+  entry.promise = attempt(0)
+    .then(data => { entry.data = data; return data; })
+    .catch(err => { if (rawCache.get(key) === entry) rawCache.delete(key); throw err; });
   rawCache.set(key, entry);
   if (rawCache.size > RAW_CACHE_MAX) rawCache.delete(rawCache.keys().next().value);
   return entry.promise;
@@ -622,7 +676,7 @@ const HillLayer = L.GridLayer.extend({
   }
 });
 
-// Own hillshade computed from the same Terrarium DEM, multiply-blended (CSS) over OSM Standard.
+// Own hillshade computed from the same Mapterhorn DEM, multiply-blended (CSS) over OSM Standard.
 const hill = new HillLayer({maxNativeZoom: DEM_MAX_Z, zIndex: 2, opacity: 0.8});
 hill.on('add', () => { hill.getContainer().style.mixBlendMode = 'multiply'; });
 const osmHill = L.layerGroup([osm, hill]);
