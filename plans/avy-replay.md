@@ -8,7 +8,7 @@ Adds a timeline bar to `avy_map.html` for playing the forecast days in a date ra
 |---|-------|--------|-------------|--------|
 | 1 | Timeline bar and playback | architect, implementer, qa-validator | Bar below the map with play/pause, dwell time, loop and the day slider over all forecast days; wait-then-dwell playback; no blanking between days; hover readout kept across days. | Done |
 | 2 | Range, URL and saved settings | implementer, qa-validator | Start/End pickers and All; slider limited to the range; `?from=&to=`; dwell and loop in localStorage. | Done |
-| 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Done (merge pending the user's OK) |
+| 3 | Review, docs and ship | ux-reviewer, qa-validator, doc-writer | Phone and dark-mode check, keyboard and a11y, README and CONTEXT.md, About note, then merge with the user's OK. | Done |
 
 Status values: `Not started` · `In progress` · `Done` · `Blocked: <reason>`.
 
