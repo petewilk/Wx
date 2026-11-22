@@ -28,6 +28,9 @@
   #timeline button[aria-pressed=true]{background:var(--accent);color:var(--btn-on-text);font-weight:700}
   #timeline button:disabled,#timeline select:disabled,#timeline input:disabled{opacity:.4;cursor:not-allowed}
   #timeline button:focus-visible,#timeline select:focus-visible,#timeline input:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+  #timeline input[type=date]{min-height:32px;padding:0 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font:12px system-ui,sans-serif;color-scheme:var(--cs)}
+  #replayMsg{font-size:12px;color:var(--text)}
+  #replayMsg:empty{display:none}
   #replayPlay{min-width:72px}
   #replaySlider{flex:1 1 120px;min-width:120px;min-height:32px;accent-color:var(--accent);margin:0}
   #replayLabel{min-width:6.5em;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
@@ -69,6 +72,8 @@
     #timeline{padding:6px 8px;gap:4px 6px}
     #replaySlider{flex-basis:100%;order:5}
     #replayLabel{order:4;margin-left:auto}
+    #replayMsg{order:6;flex-basis:100%}
+    #timeline input[type=date]{min-width:0;flex:1 1 110px}
     #rose{width:188px;padding:6px;bottom:24px}
     #rose text{font-size:17px}
     .legend{font-size:10px;gap:1px 6px}
@@ -116,6 +121,10 @@
 </div>
 </div>
 <div id="timeline">
+  <input type="date" id="replayFrom" aria-label="Replay start">
+  <input type="date" id="replayTo" aria-label="Replay end">
+  <button type="button" id="replayAll" aria-pressed="true">All</button>
+  <span id="replayMsg" role="status"></span>
   <button type="button" id="replayPlay" aria-pressed="false">&#9654; Play</button>
   <select id="replayDwell" aria-label="Seconds per day">
     <option value="2">2 s/day</option>
@@ -191,7 +200,7 @@ function uacForecastUrl(slug, isoDate) {
 /* ================= Remembered settings (localStorage; every access guarded) ================= */
 const SETTINGS_PREFIX = 'avyMap.';
 const BASEMAP_IDS = ['osmHill', 'topo', 'cyclo'];
-const DEFAULTS = {mode: 'all', basemap: 'osmHill', opacity: 50};   // opacity in percent
+const DEFAULTS = {mode: 'all', basemap: 'osmHill', opacity: 50, replayDwell: '1', replayLoop: false};   // opacity in percent; dwell in s/day
 function loadSetting(key) {
   try { return localStorage.getItem(SETTINGS_PREFIX + key); } catch (e) { return null; }
 }
@@ -212,6 +221,15 @@ function restoredOpacity() {
   const n = parseInt(v, 10);
   // A saved 0% would reopen with no visible overlay, so it restores as the default.
   return (n > 0 && n <= 100 && n % 5 === 0) ? n : DEFAULTS.opacity;
+}
+
+function restoredDwell() {
+  const v = loadSetting('replayDwell');
+  return ['2', '1', '0.5', '0.25'].includes(v) ? v : DEFAULTS.replayDwell;
+}
+function restoredLoop() {
+  const v = loadSetting('replayLoop');
+  return v === 'true' ? true : v === 'false' ? false : DEFAULTS.replayLoop;
 }
 
 /** Base and stripe LEVELS entries for a rose value; odd = pockets of v+1 over v-1. Either may be undefined. */
@@ -895,8 +913,18 @@ function setUrlDate(date) {
   } catch (e) { console.warn('Could not update URL:', e); }
 }
 
+/** Put ?from= / ?to= in the address bar (null removes that one), keeping other params and the hash. */
+function setUrlRange(from, to) {
+  try {
+    const u = new URL(location.href);
+    if (from) u.searchParams.set('from', from); else u.searchParams.delete('from');
+    if (to) u.searchParams.set('to', to); else u.searchParams.delete('to');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  } catch (e) { console.warn('Could not update URL:', e); }
+}
+
 /**
- * The one entry point that changes the day. src: 'switcher' | 'slider' | 'play' | 'init'.
+ * The one entry point that changes the day. src: 'switcher' | 'slider' | 'play' | 'range' | 'init'.
  * Anything but playback itself pauses playback; init leaves the URL alone.
  * Resolves 'ok' | 'fail' | 'stale' (see loadDay).
  */
@@ -906,8 +934,15 @@ function pickDate(date, src) {
   ensureInRange(date);
   return loadDay(date);
 }
-/** Batch 2: a date outside lo..hi resets the range to All. */
-function ensureInRange(date) {}
+/** A date outside the range (indexDates[lo]..[hi], string compare; gap dates inside count as inside) resets it to All. */
+function ensureInRange(date) {
+  if (!indexDates || !date) return;
+  if (date >= indexDates[replay.lo] && date <= indexDates[replay.hi]) return;
+  replay.lo = 0;
+  replay.hi = indexDates.length - 1;
+  setUrlRange(null, null);
+  syncDateUi();
+}
 
 /** Syncs everything that shows the day: the switcher and the timeline bar. */
 function syncDateUi() {
@@ -932,7 +967,14 @@ const replayDwell = document.getElementById('replayDwell');
 const replayLoop = document.getElementById('replayLoop');
 const replaySlider = document.getElementById('replaySlider');
 const replayLabel = document.getElementById('replayLabel');
-const timelineCtl = [replayPlay, replayDwell, replayLoop, replaySlider];
+const replayFrom = document.getElementById('replayFrom');
+const replayTo = document.getElementById('replayTo');
+const replayAll = document.getElementById('replayAll');
+const replayMsg = document.getElementById('replayMsg');
+const timelineCtl = [replayPlay, replayDwell, replayLoop, replaySlider, replayFrom, replayTo, replayAll];
+replay.dwellMs = parseFloat(restoredDwell()) * 1000;   // saved settings; the page always opens paused
+replayDwell.value = restoredDwell();
+replay.loop = restoredLoop();
 
 /** Index of the viewed day in indexDates, or -1 (no index, no day, or a gap date). */
 function curIdx() { return indexDates ? indexDates.indexOf(viewDate()) : -1; }
@@ -952,12 +994,61 @@ function syncTimeline() {
     replaySlider.min = replay.lo;
     replaySlider.max = replay.hi;
     replaySlider.value = i;
+    if (document.activeElement !== replayFrom) replayFrom.value = indexDates[replay.lo];   // don't fight typing
+    if (document.activeElement !== replayTo) replayTo.value = indexDates[replay.hi];
+    for (const el of [replayFrom, replayTo]) { el.min = indexDates[0]; el.max = indexDates[indexDates.length - 1]; }
+    replayAll.setAttribute('aria-pressed', String(replay.lo === 0 && replay.hi === indexDates.length - 1));
   }
   replayLabel.textContent = vd || '—';
   replaySlider.setAttribute('aria-valuetext', vd || 'no date');
   replayPlay.setAttribute('aria-pressed', String(replay.playing));
   replayPlay.textContent = replay.playing ? '❚❚ Pause' : '▶ Play';
   replayLoop.setAttribute('aria-pressed', String(replay.loop));
+}
+
+let rangeMsgTimer = 0;
+/** Show a short message beside the range inputs (empty clears it); it clears itself after ~4 s. */
+function showRangeMsg(text) {
+  clearTimeout(rangeMsgTimer);
+  replayMsg.textContent = text;
+  if (text) rangeMsgTimer = setTimeout(() => { replayMsg.textContent = ''; }, 4000);
+}
+
+/**
+ * Set the replay range. from/to: YYYY-MM-DD or null (open end). Swapped if from > to; a date on a gap
+ * moves inward to the nearest forecast day. With no forecast day inside, the previous range stays and a
+ * message shows. Pauses playback, moves the viewed day to the range start if it fell outside, writes the URL.
+ * opts.init: startup call (no message, no pause, no day change; an empty range falls back to All).
+ */
+function setRange(from, to, opts) {
+  if (!indexDates) return;
+  const init = !!(opts && opts.init);
+  const n = indexDates.length;
+  if (from && to && from > to) [from, to] = [to, from];
+  let lo = n, hi = -1;
+  if (!from) lo = 0; else for (let i = 0; i < n; i++) if (indexDates[i] >= from) { lo = i; break; }
+  if (!to) hi = n - 1; else for (let i = n - 1; i >= 0; i--) if (indexDates[i] <= to) { hi = i; break; }
+  if (lo > hi) {
+    if (init) { lo = 0; hi = n - 1; }
+    else {
+      showRangeMsg('No forecasts between ' + (from || indexDates[0]) + ' and ' + (to || indexDates[n - 1]));
+      replayFrom.value = indexDates[replay.lo];   // restore even if an input has focus
+      replayTo.value = indexDates[replay.hi];
+      return;
+    }
+  }
+  const changed = lo !== replay.lo || hi !== replay.hi;
+  if (!init) showRangeMsg('');
+  if (changed && !init) stopPlayback();
+  replay.lo = lo;
+  replay.hi = hi;
+  const isAll = lo === 0 && hi === n - 1;
+  setUrlRange(isAll ? null : indexDates[lo], isAll ? null : indexDates[hi]);
+  const vd = viewDate();
+  if (!init && (!vd || vd < indexDates[lo] || vd > indexDates[hi])) pickDate(indexDates[lo], 'range');
+  replayFrom.value = indexDates[lo];   // show the snapped/swapped range even in the input being edited
+  replayTo.value = indexDates[hi];
+  syncDateUi();
 }
 
 /** Stop playback and cancel any pending dwell timer. */
@@ -977,7 +1068,7 @@ function play() {
   if (i < 0) {
     i = indexDates.indexOf(nextIndexDate(viewDate()));
     if (i < replay.lo || i > replay.hi) i = replay.lo;
-  } else if (i >= replay.hi) i = replay.lo;
+  } else if (i >= replay.hi || i < replay.lo) i = replay.lo;
   syncTimeline();
   runFrom(i, tok);
 }
@@ -1007,10 +1098,18 @@ async function runSteps(i, tok) {
 replayPlay.addEventListener('click', () => { if (replay.playing) stopPlayback(); else play(); });
 replayDwell.addEventListener('change', () => {
   const s = parseFloat(replayDwell.value);
-  if (s > 0) replay.dwellMs = s * 1000;
+  if (s > 0) { replay.dwellMs = s * 1000; saveSetting('replayDwell', replayDwell.value); }
   syncDateUi();
 });
-replayLoop.addEventListener('click', () => { replay.loop = !replay.loop; syncDateUi(); });
+replayLoop.addEventListener('click', () => { replay.loop = !replay.loop; saveSetting('replayLoop', replay.loop); syncDateUi(); });
+for (const el of [replayFrom, replayTo]) {
+  el.addEventListener('change', () => {
+    if (!DATE_RE.test(el.value)) { syncTimeline(); el.value = indexDates ? indexDates[el === replayFrom ? replay.lo : replay.hi] : ''; return; }   // empty/partial: restore
+    if (el.value < '1000') return;   // Chrome fires change mid-typing a year (0002-, 0020-, 0202-): wait for the full year
+    setRange(replayFrom.value, replayTo.value);
+  });
+}
+replayAll.addEventListener('click', () => setRange(null, null));
 replaySlider.addEventListener('input', () => {
   const d = indexDates && indexDates[+replaySlider.value];
   if (d) pickDate(d, 'slider');
@@ -1093,6 +1192,11 @@ async function initForecast() {
   const q = new URLSearchParams(location.search).get('date');
   const reqDate = (q !== null && isDate(q)) ? q : null;
   if (q !== null && reqDate === null) setUrlDate(null);   // invalid ?date=: drop it, fall back to newest
+  const qp = new URLSearchParams(location.search);
+  const qFrom = qp.get('from'), qTo = qp.get('to');
+  const reqFrom = (qFrom !== null && isDate(qFrom)) ? qFrom : null;
+  const reqTo = (qTo !== null && isDate(qTo)) ? qTo : null;
+  if ((qFrom !== null && reqFrom === null) || (qTo !== null && reqTo === null)) setUrlRange(reqFrom, reqTo);   // drop invalid ones
   if (location.protocol === 'file:') {
     const msg = 'Serve over http (see README)';
     addNotice(msg);
@@ -1131,10 +1235,13 @@ async function initForecast() {
     indexDates = [...new Set(indexDates)].sort();   // ascending, no duplicates (ISO strings sort correctly)
     replay.lo = 0;
     replay.hi = indexDates.length - 1;
+    setRange(reqFrom, reqTo, {init: true});   // snaps; no forecasts inside: All, params removed
+    if (reqToken !== initToken) ensureInRange(viewDate());   // a day picked while the index loaded may sit outside
   }
   syncDateUi();
   if (reqToken !== initToken) return;
-  if (indexDates) pickDate(reqDate || indexDates[indexDates.length - 1], 'init');
+  // No ?date=: the latest forecast in the range (the newest one when the range is All or reaches it).
+  if (indexDates) pickDate(reqDate || indexDates[replay.hi], 'init');
   else if (reqDate) pickDate(reqDate, 'init');
   else setDay(null, null, 'No forecast available');
 }
