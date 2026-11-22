@@ -1,0 +1,43 @@
+From: Utah Avalanche Center <no-reply@utahavalanchecenter.org>
+To: someone@example.com
+Subject: Forecast: Salt Lake Area Mountains
+Date: Sun, 22 Nov 2026 14:34:30 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+This is a multi-part message in MIME format.
+--outer
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+  View this forecast in your browser [1]
+-------- FORECAST FOR SALT LAKE AREA MOUNTAINS -------------------------------
+
+Issued by A Forecaster for
+Sunday morning, November 22, 2026
+*MODERATE* avalanche danger exists on all mid- and upper-elevation slopes.
+
+[1] https://utahavalanchecenter.org/forecast/salt-lake/11/22/2026
+[2] https://utahavalanchecenter.org/forecast/tutorial
+
+--alt
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+<html><body>
+<table><tbody>
+<tr><td><img width="100" src="https://utahavalanchecenter.org/themes/custom/basscss/images/uac.png" /></td></tr>
+<tr><td><a href="https://track.example/L0/https:%2F%2Futahavalanchecenter.org%2Fforecast%2Fsalt-lake%2F11%2F22%2F2026/1/abc=474">View this forecast in your browser</a></td></tr>
+<tr><td><h2>Forecast for Salt Lake Area Mountains</h2></td></tr>
+<tr><td><img width="250" src="https://utahavalanchecenter.org/sites/default/files/forecast/202611/20261122-071604-0.png" />
+<img width="500" src="https://utahavalanchecenter.org/modules/custom/advisory_mail/images/dangerscale.png" /></td></tr>
+<tr><td><img width="90" src="https://utahavalanchecenter.org/sites/default/files/forecast/202611/20261122-071604-3.png" /></td></tr>
+</tbody></table>
+</body></html>
+
+--alt--
+
+--outer--

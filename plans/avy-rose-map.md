@@ -211,7 +211,7 @@ These came out of the batch 2 grilling. Don't change them without asking the use
 
 Only what the user put off on 2026-11-10.
 
-1. **Live data source.** The user will read UAC's Data Access Policy (in the token request form) first. Leading option: a UAC token plus a DreamHost cron job that writes the files under **Forecast data files**. Also open: a PHP proxy instead, and what happens to the sample files.
+1. **Live data source.** Settled 2026-11-22 for local use: no API. `tools/fetch_uac_roses.py` decodes the rose PNG linked from each daily UAC email (IMAP, login from 1Password) into git-ignored `data/avy-local/`, which the page reads only on localhost. The deployed page keeps the samples. The UAC token plus server cron option is still open if the site should ever show live data.
 2. **Per-problem roses:** later. The data format reserves `problems` for them.
 3. **Zone picker and other states:** later. Data paths already include center and zone.
 4. **Linking the page from the site:** after live data exists.

@@ -11,3 +11,9 @@
 !.vscode/tasks.json
 .idea/
 *.swp
+
+# Local avalanche forecasts (tools/fetch_uac_roses.py); never deployed
+data/avy-local/
+
+# Python
+__pycache__/
